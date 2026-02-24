@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Linux ARM Template UI</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --card: #ffffff;
+      --border: #edebe9;
+      --text: #201f1e;
+      --muted: #605e5c;
+      --primary: #0078d4;
+      --danger: #b91c1c;
+      --headerBg: #0078d4;
+      --headerText: #ffffff;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--sans); color: var(--text); background: var(--bg); }
+    header { background: var(--headerBg); color: var(--headerText); padding: 12px 16px; font-weight: 800; box-shadow: inset 0 -1px 0 rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .container { padding: 16px; max-width: 1500px; margin: 0 auto; }
+    .hint { color: var(--muted); margin: 8px 0 16px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    @media (min-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-height: 420px; min-width: 0; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    .title { font-size: 16px; font-weight: 900; }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    button { border: 1px solid var(--border); background: #fff; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 800; }
+    button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    button.danger { background: #fff; border-color: #f0b4b4; color: var(--danger); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .tabs { display: flex; gap: 6px; padding: 10px 0 8px; overflow-x: auto; overflow-y: hidden; max-width: 100%; border-bottom: 1px solid var(--border); margin-top: 10px; }
+    .tab { flex: 0 0 auto; white-space: nowrap; border: 1px solid var(--border); border-radius: 999px; padding: 6px 10px; font-weight: 900; font-size: 13px; background: #fff; }
+    .tab.active { border-color: var(--primary); color: var(--primary); background: #eef2ff; }
+
+    .form { padding-top: 12px; display: grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 720px) { .form.two { grid-template-columns: 1fr 1fr; } }
+
+    label { font-size: 12px; color: var(--muted); font-weight: 900; display: block; margin-bottom: 6px; }
+    input, select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-size: 14px; background: #fff; }
+    textarea { font-family: var(--mono); font-size: 12px; line-height: 1.35; resize: vertical; min-height: 340px; }
+
+    .section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .section h3 { margin: 0; font-size: 14px; }
+
+    .box { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-top: 8px; background: #fff; }
+
+    .grid3 { display: grid; grid-template-columns: 1fr; gap: 8px; align-items: end; }
+    @media (min-width: 720px) { .grid3 { grid-template-columns: 1fr 1fr auto; } }
+
+    .muted { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .error-text { color: var(--danger); font-size: 12px; margin-top: 6px; font-weight: 700; }
+    .pill { display: inline-block; font-size: 12px; font-weight: 900; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: #111; background: #f7f7f7; }
+    .warn { border-color: #f3d08b; background: #fff7e6; }
+    .ok { border-color: #b7e3c4; background: #ecfdf3; }
+
+    .toggle { display: inline-flex; align-items: center; gap: 8px; }
+    .toggle input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+
+    table.summary { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; table-layout: fixed; }
+    table.summary th, table.summary td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+    table.summary th { background: #f8f8f8; font-weight: 900; }
+    .truncate-cell { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #vmCustomData { min-height: 96px; font-family: var(--mono); font-size: 12px; }
+    .help-wrap { position: relative; }
+    .help-balloon {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: min(520px, 90vw);
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 12px;
+      z-index: 30;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+      display: none;
+      white-space: normal;
+    }
+    .help-balloon.show { display: block; }
+    .help-balloon h4 { margin: 0 0 8px; font-size: 14px; }
+    .help-balloon ul { margin: 0 0 0 16px; padding: 0; }
+    .help-balloon li { margin: 4px 0; }
+    #helpBtn { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.14); color: #fff; }
+    #helpBtn:hover { background: rgba(255,255,255,0.22); }
+    .test-btn { padding: 0; border: 0; background: transparent; line-height: 0; }
+    .test-btn img { height: 28px; width: auto; display: block; border-radius: 4px; }
+
+    code.inline { font-family: var(--mono); font-size: 12px; background: #f3f4f6; padding: 2px 6px; border-radius: 6px; border: 1px solid #e5e7eb; }
+  
+ /* Toast */
+ .toast {position: fixed; right: 16px; bottom: 16px; max-width: 520px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: #111827; color: #fff; box-shadow: 0 10px 25px rgba(0,0,0,0.18); font-size: 13px; line-height: 1.35; opacity: 0; transform: translateY(10px); pointer-events: none; transition: opacity .18s ease, transform .18s ease; z-index: 9999;}
+ .toast.show {opacity: 1; transform: translateY(0);}
+ .toast .title {font-size: 13px; font-weight: 900; margin-bottom: 2px;}
+ .toast .msg {color: #e5e7eb;}
+</style>
+</head>
+<body>
+  <header>
+    <div>Linux - ARM Template UI</div>
+    <div class="help-wrap">
+      <button id="helpBtn" type="button">Help</button>
+      <div id="helpBalloon" class="help-balloon" role="dialog" aria-label="Help" aria-hidden="true">
+        <h4>How this template builder works</h4>
+        <ul>
+          <li>Create one or more VMs with compatible size, generation, architecture, image, and disk controller.</li>
+          <li>Image list is filtered by selected generation, architecture, controller type, and optional publisher filter.</li>
+          <li>NIC accelerated networking is enforced by size policy (required/optional/unsupported).</li>
+          <li>Data disk SKU options are restricted to SKUs supported by the selected VM size.</li>
+          <li>VM names must be valid and unique before JSON can be copied or downloaded.</li>
+          <li>Generated output includes shared VNet/subnet/NSG plus per-VM NICs, optional public IPs, and VM resources.</li>
+          <li>Custom data is optional and only included in ARM when non-empty.</li>
+          <li>When custom data is present, it is directly base64-encoded into ARM customData.</li>
+        </ul>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="grid">
+      <!-- Left -->
+      <div class="card">
+        <div class="row">
+          <div class="title">VMs</div>
+          <div class="actions">
+            <button class="primary" id="addVmBtn">Add VM</button>
+            <button id="cloneVmBtn">Clone VM</button>
+            <button class="danger" id="removeVmBtn">Remove VM</button>
+          </div>
+        </div>
+
+        <div class="tabs" id="tabs"></div>
+
+        <div class="section">
+          <div class="row">
+            <h3>VM Settings</h3>
+            <span class="muted" id="vmMeta"></span>
+          </div>
+
+          <div class="form two">
+            <div>
+              <label for="vmName">VM Name</label>
+              <input id="vmName" placeholder="vm1" />
+              <div id="vmNameError" class="error-text"></div>
+            </div>
+
+            <div>
+              <label for="vmSize">VM Size</label>
+              <select id="vmSize"></select>
+              <div class="muted" id="sizeHint"></div>
+            </div>
+
+            <div>
+              <label for="vmGen">VM Generation (constrained by size)</label>
+              <select id="vmGen"></select>
+            </div>
+
+            <div>
+              <label for="vmPublisher">Publisher</label>
+              <select id="vmPublisher"></select>
+            </div>
+
+            <div>
+              <label for="vmImage">OS Image (filtered by size tags)</label>
+              <select id="vmImage"></select>
+              <div class="muted" id="imageHint"></div>
+            </div>
+
+            <div>
+              <label for="diskController">Disk Controller Type (constrained by size)</label>
+              <select id="diskController"></select>
+            </div>
+
+            <div style="grid-column: 1 / -1;">
+              <label for="vmCustomData">Custom Data (optional)</label>
+              <textarea id="vmCustomData" placeholder="#cloud-config&#10;package_update: true"></textarea>
+              <div class="toggle" style="margin-top: 8px;">
+                <input id="vmRebootRequired" type="checkbox" />
+                <span class="muted" style="margin-top: 0;">Reboot required after deployment</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="row">
+            <h3>Network Interfaces (NICs)</h3>
+            <button id="addNicBtn">Add NIC</button>
+          </div>
+          <div id="nicList"></div>
+          <div class="muted" id="noNicMsg">No NICs (a VM requires at least one NIC). This page will auto-create one if missing.</div>
+        </div>
+
+        <div class="section">
+          <div class="row">
+            <h3>Data Disks</h3>
+            <button id="addDiskBtn">Add disk</button>
+          </div>
+          <div id="diskList"></div>
+          <div class="muted" id="noDiskMsg">No data disks.</div>
+        </div>
+
+      </div>
+
+      <!-- Right -->
+      <div class="card">
+        <div class="row">
+          <div class="title">Generated ARM JSON</div>
+          <div class="actions">
+            <button id="copyBtn">Copy</button>
+            <button class="primary" id="downloadBtn">Download</button>
+          </div>
+        </div>
+        <div class="hint" style="margin: 10px 0 10px;">
+          This generates one shared network (VNet, subnet, and NSG), plus each VM with its own NICs. If a VM size does not support accelerated networking, it is turned off automatically.
+        </div>
+
+        <textarea id="output" readonly spellcheck="false"></textarea>
+
+        <div class="section" style="margin-top: 10px;">
+          <h3>VM Configuration Summary</h3>
+          <div id="vmSummary" class="box"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  /*
+   * =============================================================================
+   * ARM Builder UI - Maintenance Guide
+   * =============================================================================
+   * Purpose
+   *   Build a multi-VM ARM template from a constrained UI model.
+   *
+   * High-level flow
+   *   1) Static catalogs define capabilities:
+   *      - imageOptions: OS image compatibility metadata
+   *      - sizeOptions: VM SKU capabilities (arch/gen/controller/disk/network)
+   *   2) User edits active VM in the form.
+   *   3) sanitizeAllVms() enforces constraints and auto-corrects invalid choices.
+   *   4) updateOutput() regenerates ARM JSON + summary table.
+   *   5) Copy/Download exports the generated template.
+   *
+   * Core invariants
+   *   - VM names must be valid + unique.
+   *   - Selected image must match VM size architecture + generation + controller.
+   *   - Data disk SKUs must be supported by selected VM size.
+   *   - Accelerated networking follows size policy (required/optional/unsupported).
+   *   - Ultra disks trigger zonal placement + ultraSSDEnabled in generated ARM.
+   *
+   * Recommended maintenance workflow
+   *   - Update imageOptions/sizeOptions from validated CLI output.
+   *   - Keep keys stable for compatibility with saved configurations.
+   *   - Verify UI behavior by changing size/gen/controller and observing auto-fixes.
+   * =============================================================================
+   */
+
+  // ---------------------------------------------------------------------------
+  // Utility helpers (ID generation, text encoding, customData conversion)
+  // ---------------------------------------------------------------------------
+  function uid() { return Math.random().toString(16).slice(2); }
+
+  function toBase64Utf8(text) {
+    const bytes = new TextEncoder().encode(String(text || ''));
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  }
+
+  function encodeCustomDataForArm(text, rebootRequired) {
+    const raw = String(text || '').replace(/\r\n/g, '\n');
+    if (!raw.trim()) return '';
+
+    const payload = rebootRequired ? `${raw}\n\nsleep 60 && reboot &` : raw;
+    return toBase64Utf8(payload);
+  }
+
+// ---------------------------------------------------------------------------
+// UI feedback helper (small transient notifications for auto-fixes)
+// ---------------------------------------------------------------------------
+let toastTimer = null;
+function showToast(title, msg) {
+  const t = document.getElementById('toast');
+  const tt = document.getElementById('toastTitle');
+  const tm = document.getElementById('toastMsg');
+  if (!t || !tt || !tm) return;
+  tt.textContent = title || '';
+  tm.textContent = msg || '';
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+// ---------------------------------------------------------------------------
+// Image catalog (source-of-truth for image compatibility constraints)
+// ---------------------------------------------------------------------------
+// Notes:
+// - `key` must be unique (validated at startup).
+// - `arch` + `gen` + controller flags drive UI filtering.
+// - `ref` is written directly to ARM imageReference.
+// - Keep entries grouped by publisher and sorted by key for easier diffs.
+// Image options (tagged so we can filter by Gen + controller).
+//
+// Why we keep multiple images per distro:
+// - Architecture: x64 and Arm64 require different image SKUs.
+// - Release track: courses/labs may need specific OS major/minor lines.
+// - VM Generation: Gen1 vs Gen2 image compatibility differs by VM size/family.
+// - Disk controller: some Gen2/size combinations require NVMe-capable images.
+//
+// Organization policy:
+// - Group by publisher in this order: RedHat, Canonical, SUSE.
+// - Within each publisher, keep entries ordered by `key` for maintenance.
+  const imageOptions = [
+    // RedHat
+
+    { key: 'rhel_10_1_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL 10.1 (Gen1) (RedHat:RHEL:10_1:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'10_1', version:'latest' } },
+
+    { key: 'rhel_10_lvm_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL 10 (Gen2) (RedHat:RHEL:10-lvm-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'10-lvm-gen2', version:'latest' } },
+
+    { key: 'rhel_7_6_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL:7.6 (Gen1) (RedHat:RHEL:7.6:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'7.6', version:'latest' } },
+
+    { key: 'rhel_7_8_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL:7.8 (Gen1) (RedHat:RHEL:7.8:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'7.8', version:'latest' } },
+
+    { key: 'rhel_8_9_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL 8.9 (Gen1) (RedHat:RHEL:8_9:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'8_9', version:'latest' } },
+
+    { key: 'rhel_8_lvm_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL 8 (Gen2) (RedHat:RHEL:8-lvm-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'8-lvm-gen2', version:'latest' } },
+
+    { key: 'rhel_9_7_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL 9.7 (Gen1) (RedHat:RHEL:9_7:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'9_7', version:'latest' } },
+
+    { key: 'rhel_9_lvm_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL 9 (Gen2) (RedHat:RHEL:9-lvm-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL', sku:'9-lvm-gen2', version:'latest' } },
+
+    { key: 'rhel_arm64_10_1_arm64_arm64_gen2', arch: 'Arm64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL 10.1 Arm64 (Gen2) (RedHat:rhel-arm64:10_1-arm64:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-arm64', sku:'10_1-arm64', version:'latest' } },
+
+    { key: 'rhel_arm64_8_10_arm64_arm64_gen2', arch: 'Arm64', gen: 'Gen2', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL 8.10 Arm64 (Gen2) (RedHat:rhel-arm64:8_10-arm64:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-arm64', sku:'8_10-arm64', version:'latest' } },
+
+    { key: 'rhel_arm64_9_7_arm64_arm64_gen2', arch: 'Arm64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL 9.7 Arm64 (Gen2) (RedHat:rhel-arm64:9_7-arm64:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-arm64', sku:'9_7-arm64', version:'latest' } },
+
+    { key: 'rhel_raw_10_1_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 10.1 (Gen1) (RedHat:rhel-raw:10_1:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'10_1', version:'latest' } },
+
+    { key: 'rhel_raw_10_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL Raw 10 (Gen2) (RedHat:rhel-raw:10-raw-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'10-raw-gen2', version:'latest' } },
+
+    { key: 'rhel_raw_10_raw_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 10 (Gen1) (RedHat:rhel-raw:10-raw:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'10-raw', version:'latest' } },
+
+    { key: 'rhel_raw_89_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 8.9 (Gen2) (RedHat:rhel-raw:89-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'89-gen2', version:'latest' } },
+
+    { key: 'rhel_raw_8_4_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 8.4 (Gen1) (RedHat:rhel-raw:8_4:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8_4', version:'latest' } },
+
+    { key: 'rhel_raw_8_9_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 8.9 (Gen1) (RedHat:rhel-raw:8_9:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8_9', version:'latest' } },
+
+    { key: 'rhel_raw_8_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 8 (Gen2) (RedHat:rhel-raw:8-raw-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8-raw-gen2', version:'latest' } },
+
+    { key: 'rhel_raw_8_raw_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 8 (Gen1) (RedHat:rhel-raw:8-raw:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'8-raw', version:'latest' } },
+
+    { key: 'rhel_raw_9_5_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL Raw 9.5 (Gen1) (RedHat:rhel-raw:9_5:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9_5', version:'latest' } },
+
+    { key: 'rhel_raw_9_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL Raw 9 (Gen2) (RedHat:rhel-raw:9-raw-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9-raw-gen2', version:'latest' } },
+
+    { key: 'rhel_raw_9_raw_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL Raw 9 (Gen1) (RedHat:rhel-raw:9-raw:latest)',
+      ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9-raw', version:'latest' } },
+
+    { key: 'rhel_sap_ha_84sapha_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL SAP HA 8.4 (Gen2) (RedHat:RHEL-SAP-HA:84sapha-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'84sapha-gen2', version:'latest' } },
+
+    { key: 'rhel_sap_ha_96sapha_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'RHEL SAP HA 9.6 (Gen2) (RedHat:RHEL-SAP-HA:96sapha-gen2:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL-SAP-HA', sku:'96sapha-gen2', version:'latest' } },
+
+    // Canonical
+    { key: 'ubuntu_24_04_lts_server_arm64_arm64_gen2', arch: 'Arm64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'Ubuntu 24.04 Arm64 (Gen2) (Canonical:ubuntu-24_04-lts:server-arm64:latest)',
+      ref: { publisher:'Canonical', offer:'ubuntu-24_04-lts', sku:'server-arm64', version:'latest' } },
+
+    { key: 'ubuntu_24_04_lts_server_gen1_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'Ubuntu 24.04 (Gen1) (Canonical:ubuntu-24_04-lts:server-gen1:latest)',
+      ref: { publisher:'Canonical', offer:'ubuntu-24_04-lts', sku:'server-gen1', version:'latest' } },
+
+    { key: 'ubuntu_24_04_lts_server_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'Ubuntu 24.04 (Gen2) (Canonical:ubuntu-24_04-lts:server:latest)',
+      ref: { publisher:'Canonical', offer:'ubuntu-24_04-lts', sku:'server', version:'latest' } },
+
+    // SUSE
+    { key: 'sles_15_sp6_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'SLES 15 SP6 (Gen2) (SUSE:sles-15-sp6:gen2:latest)',
+      ref: { publisher:'SUSE', offer:'sles-15-sp6', sku:'gen2', version:'latest' } },
+
+    { key: 'sles_15_sp7_gen1_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'SLES 15 SP7 (Gen1) (SUSE:sles-15-sp7:gen1:latest)',
+      ref: { publisher:'SUSE', offer:'sles-15-sp7', sku:'gen1', version:'latest' } },
+
+    { key: 'sles_15_sp7_arm64_gen2_arm64_gen2', arch: 'Arm64', gen: 'Gen2', nvmeCapable: false, scsiCapable: true,
+      label: 'SLES 15 SP7 Arm64 (Gen2) (SUSE:sles-15-sp7-arm64:gen2:latest)',
+      ref: { publisher:'SUSE', offer:'sles-15-sp7-arm64', sku:'gen2', version:'latest' } },
+
+    { key: 'sles_15_sp7_basic_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'SLES 15 SP7 basic (Gen2) (SUSE:sles-15-sp7-basic:gen2:latest)',
+      ref: { publisher:'SUSE', offer:'sles-15-sp7-basic', sku:'gen2', version:'latest' } },
+
+    { key: 'sles_16_0_x86_64_gen1_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'SLES 16.0 x86_64 (Gen1) (SUSE:sles-16-0-x86-64:gen1:latest)',
+      ref: { publisher:'SUSE', offer:'sles-16-0-x86-64', sku:'gen1', version:'latest' } },
+
+    { key: 'sles_16_0_x86_64_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'SLES 16.0 x86_64 (Gen2) (SUSE:sles-16-0-x86-64:gen2:latest)',
+      ref: { publisher:'SUSE', offer:'sles-16-0-x86-64', sku:'gen2', version:'latest' } },
+
+    { key: 'sles_sap_15_sp7_gen1_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'SLES SAP 15 SP7 (Gen1) (SUSE:sles-sap-15-sp7:gen1:latest)',
+      ref: { publisher:'SUSE', offer:'sles-sap-15-sp7', sku:'gen1', version:'latest' } },
+
+    { key: 'sles_sap_15_sp7_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+      label: 'SLES SAP 15 SP7 (Gen2) (SUSE:sles-sap-15-sp7:gen2:latest)',
+      ref: { publisher:'SUSE', offer:'sles-sap-15-sp7', sku:'gen2', version:'latest' } },
+  ];
+
+  const imageSortCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  const imagePublisherOrder = { RedHat: 0, Canonical: 1, SUSE: 2 };
+  imageOptions.sort((a, b) => {
+    const ap = String((a.ref && a.ref.publisher) || '');
+    const bp = String((b.ref && b.ref.publisher) || '');
+    const apr = imagePublisherOrder[ap] ?? 99;
+    const bpr = imagePublisherOrder[bp] ?? 99;
+    if (apr !== bpr) return apr - bpr;
+
+    const ak = String(a.key || '');
+    const bk = String(b.key || '');
+    const byKey = imageSortCollator.compare(ak, bk);
+    if (byKey !== 0) return byKey;
+
+    const al = String(a.label || '');
+    const bl = String(b.label || '');
+    return imageSortCollator.compare(al, bl);
+  });
+
+  function validateImageOptionsConfig(options) {
+    const keySeen = new Map();
+    const refSeen = new Map();
+    const issues = [];
+
+    options.forEach((img, idx) => {
+      const key = String(img && img.key || '').trim();
+      const ref = img && img.ref ? img.ref : {};
+      const refId = [ref.publisher, ref.offer, ref.sku, ref.version].map(v => String(v || '').trim()).join(':');
+
+      if (!key) {
+        issues.push(`imageOptions[${idx}] is missing key`);
+      } else if (keySeen.has(key)) {
+        issues.push(`Duplicate image key '${key}' at indexes ${keySeen.get(key)} and ${idx}`);
+      } else {
+        keySeen.set(key, idx);
+      }
+
+      if (refId === ':::') {
+        issues.push(`imageOptions[${idx}] has incomplete ref`);
+      } else if (refSeen.has(refId)) {
+        issues.push(`Duplicate image ref '${refId}' at indexes ${refSeen.get(refId)} and ${idx}`);
+      } else {
+        refSeen.set(refId, idx);
+      }
+    });
+
+    if (issues.length) {
+      const msg = `Invalid imageOptions configuration:\n- ${issues.join('\n- ')}`;
+      console.error(msg);
+      throw new Error(msg);
+    }
+  }
+
+  validateImageOptionsConfig(imageOptions);
+
+  // ---------------------------------------------------------------------------
+  // VM size catalog (source-of-truth for size-level capabilities)
+  // ---------------------------------------------------------------------------
+  // Notes:
+  // - `diskControllersByGen` constrains controller selection by generation.
+  // - `diskSkuSupport` gates allowed data disk SKUs in the UI.
+  // - `accelNetMode` controls NIC accelerated networking behavior.
+  // VM size capabilities.
+  const sizeOptions = [
+  // Standard_D4s_v5
+  // General-purpose x64 SKU. Supports Gen1/Gen2, SCSI only, Premium SSD (not PremiumV2/Ultra),
+  // and accelerated networking is required.
+  {
+    name: 'Standard_D4s_v5',
+    tags: {
+      architectures: ['x64'],
+      generations: ['Gen1','Gen2'],
+      // Gen1 has no NVMe support. Gen2 remains SCSI-only for this SKU.
+      diskControllersByGen: {
+        Gen1: ['SCSI'],
+        Gen2: ['SCSI']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: false,
+        UltraSSD_LRS: false
+      },
+      accelNetMode: 'required'
+    }
+  },
+
+  // Standard_E2bds_v5
+  // Memory-optimized x64 SKU. Supports Gen1/Gen2, SCSI on Gen1 and SCSI+NVMe on Gen2,
+  // supports Premium/PremiumV2/Ultra disks, accelerated networking optional.
+  {
+    name: 'Standard_E2bds_v5',
+    tags: {
+      architectures: ['x64'],
+      generations: ['Gen1','Gen2'],
+      diskControllersByGen: {
+        Gen1: ['SCSI'],
+        Gen2: ['SCSI','NVMe']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: true,
+        UltraSSD_LRS: true
+      },
+      accelNetMode: 'optional'
+    }
+  },
+  // Standard_E32bds_v5
+  // Larger memory-optimized x64 SKU in same family as E2bds_v5.
+  // Supports Gen1/Gen2, SCSI on Gen1 and SCSI+NVMe on Gen2, Premium/PremiumV2/Ultra disks,
+  // accelerated networking optional.
+  {
+    name: 'Standard_E32bds_v5',
+    tags: {
+      architectures: ['x64'],   
+      generations: ['Gen1','Gen2'],
+      diskControllersByGen: {
+        Gen1: ['SCSI'],
+        Gen2: ['SCSI','NVMe']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: true,
+        UltraSSD_LRS: true
+      },
+      accelNetMode: 'optional'
+    }
+  },
+
+  // Standard_B2s
+  // Burstable x64 SKU. Supports Gen1/Gen2, SCSI only, Standard/StandardSSD only,
+  // Premium/PremiumV2/Ultra disks not supported, accelerated networking unsupported.
+  {
+    name: 'Standard_B2s',
+    tags: {
+      architectures: ['x64'],
+      generations: ['Gen1','Gen2'],
+      diskControllersByGen: {
+        Gen1: ['SCSI'],
+        Gen2: ['SCSI']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: false,
+        PremiumV2_LRS: false,
+        UltraSSD_LRS: false
+      },
+      accelNetMode: 'unsupported'
+    }
+  },
+
+  // Arm64 examples (Ampere-based). Gen2 + SCSI in this set.
+  // Standard_D2ps_v5
+  // Arm64 general-purpose SKU. Gen2 only, SCSI only, Premium SSD supported,
+  // PremiumV2/Ultra not supported, accelerated networking optional.
+  {
+    name: 'Standard_D2ps_v5',
+    tags: {
+      architectures: ['Arm64'],
+      generations: ['Gen2'],
+      diskControllersByGen: {
+        Gen2: ['SCSI']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: false,
+        UltraSSD_LRS: false
+      },
+      accelNetMode: 'optional'
+    }
+  },
+  // Standard_E2ps_v6
+  // Arm64 v6 memory-optimized SKU. Gen2 only, SCSI only, Premium SSD supported,
+  // PremiumV2/Ultra not supported, accelerated networking optional.
+  {
+    name: 'Standard_E2ps_v6',
+    tags: {
+      architectures: ['Arm64'],
+      generations: ['Gen2'],
+      diskControllersByGen: {
+        Gen2: ['SCSI']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: false,
+        UltraSSD_LRS: false
+      },
+      accelNetMode: 'optional'
+    }
+  },
+  // Standard_D2ps_v6
+  // Arm64 v6 general-purpose SKU. Gen2 only, SCSI only, Premium SSD supported,
+  // PremiumV2/Ultra not supported, accelerated networking optional.
+  {
+    name: 'Standard_D2ps_v6',
+    tags: {
+      architectures: ['Arm64'],
+      generations: ['Gen2'],
+      diskControllersByGen: {
+        Gen2: ['SCSI']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: false,
+        UltraSSD_LRS: false
+      },
+      accelNetMode: 'optional'
+    }
+  }
+];
+
+const diskSkus = ['StandardSSD_LRS', 'Premium_LRS', 'PremiumV2_LRS', 'Standard_LRS', 'UltraSSD_LRS'];
+
+  // ---------------------------------------------------------------------------
+  // View-model defaults and lookup helpers
+  // ---------------------------------------------------------------------------
+  function defaultNic(idx) {
+    return { id: uid(), name: `nic${idx+1}`, accelerated: false, publicIp: idx === 0 };
+  }
+
+  function sizeByName(name) {
+    return sizeOptions.find(s => s.name === name) || sizeOptions[0];
+  }
+
+  function nextDefaultVmName() {
+    const used = new Set(vms.map(v => String(v.name || '').trim().toLowerCase()).filter(Boolean));
+    let n = 1;
+    while (used.has(`vm${n}`.toLowerCase())) n += 1;
+    return `vm${n}`;
+  }
+
+  function duplicateVmNamesSet() {
+    const counts = new Map();
+    vms.forEach(vm => {
+      const k = String((vm && vm.name) || '').trim().toLowerCase();
+      if (!k) return;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    });
+    const dupes = new Set();
+    counts.forEach((count, key) => {
+      if (count > 1) dupes.add(key);
+    });
+    return dupes;
+  }
+
+  function hasDuplicateVmNameAt(index) {
+    const vm = vms[index];
+    if (!vm) return false;
+    const key = String(vm.name || '').trim().toLowerCase();
+    if (!key) return false;
+    return duplicateVmNamesSet().has(key);
+  }
+
+  function vmNameFormatError(name) {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return 'VM name is required.';
+    if (trimmed.length > 64) return 'VM name must be 1-64 characters.';
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?$/.test(trimmed)) {
+      return 'VM name must be 1-64 chars, use letters/numbers/hyphen only, and start/end with letter or number.';
+    }
+    return '';
+  }
+
+  function vmNameErrorAt(index) {
+    const vm = vms[index];
+    if (!vm) return '';
+    const formatErr = vmNameFormatError(vm.name);
+    if (formatErr) return formatErr;
+    if (hasDuplicateVmNameAt(index)) return 'VM name must be unique. Use a different name.';
+    return '';
+  }
+
+  function hasAnyVmNameErrors() {
+    return vms.some((_, i) => !!vmNameErrorAt(i));
+  }
+
+  function allowedGenerationsFor(vm) {
+    return sizeByName(vm.size).tags.generations;
+  }
+
+  function allowedArchitecturesFor(vm) {
+    const sz = sizeByName(vm.size);
+    return (sz.tags && sz.tags.architectures && sz.tags.architectures.length) ? sz.tags.architectures : ['x64'];
+  }
+
+  function imageByKey(key) {
+    return imageOptions.find(i => i.key === key);
+  }
+
+  function allowedControllersFor(vm) {
+  const sz = sizeByName(vm.size);
+  const map = (sz.tags && sz.tags.diskControllersByGen) ? sz.tags.diskControllersByGen : {};
+  return map[vm.gen] || ['SCSI'];
+}
+function accelNetSupportedFor(vm) {
+    return accelNetModeFor(vm) !== 'unsupported';
+  }
+
+  function accelNetRequiredFor(vm) {
+    return accelNetModeFor(vm) === 'required';
+  }
+
+  function accelNetModeFor(vm) {
+    const tags = sizeByName(vm.size).tags || {};
+    if (tags.accelNetMode) return tags.accelNetMode;
+    return tags.accelNet ? 'optional' : 'unsupported';
+  }
+
+  function resolvedAccelForNic(vm, nic) {
+    const mode = accelNetModeFor(vm);
+    if (mode === 'required') return true;
+    if (mode === 'unsupported') return false;
+    return !!nic.accelerated;
+  }
+
+  function diskSupportFlagsFor(vm) {
+    const tags = sizeByName(vm.size).tags || {};
+    const flags = tags.diskSkuSupport || {};
+    const fallback = {
+      Standard_LRS: true,
+      StandardSSD_LRS: true,
+      Premium_LRS: true,
+      PremiumV2_LRS: false,
+      UltraSSD_LRS: false
+    };
+    return {
+      Standard_LRS: flags.Standard_LRS !== undefined ? !!flags.Standard_LRS : fallback.Standard_LRS,
+      StandardSSD_LRS: flags.StandardSSD_LRS !== undefined ? !!flags.StandardSSD_LRS : fallback.StandardSSD_LRS,
+      Premium_LRS: flags.Premium_LRS !== undefined ? !!flags.Premium_LRS : fallback.Premium_LRS,
+      PremiumV2_LRS: flags.PremiumV2_LRS !== undefined ? !!flags.PremiumV2_LRS : fallback.PremiumV2_LRS,
+      UltraSSD_LRS: flags.UltraSSD_LRS !== undefined ? !!flags.UltraSSD_LRS : fallback.UltraSSD_LRS
+    };
+  }
+
+  function supportedDiskSkusFor(vm) {
+    const flags = diskSupportFlagsFor(vm);
+    return diskSkus.filter(s => !!flags[s]);
+  }
+
+  function defaultDiskSkuFor(vm) {
+    const supported = supportedDiskSkusFor(vm);
+    if (supported.includes('StandardSSD_LRS')) return 'StandardSSD_LRS';
+    return supported[0] || 'Standard_LRS';
+  }
+
+  function normalizeDataDiskSkus(vm) {
+    const supported = supportedDiskSkusFor(vm);
+    const fallback = defaultDiskSkuFor(vm);
+    let changed = 0;
+    (vm.disks || []).forEach(d => {
+      if (!supported.includes(d.sku)) {
+        d.sku = fallback;
+        changed += 1;
+      }
+    });
+    return changed;
+  }
+
+  function filteredImages(vm, includePublisherFilter) {
+    let candidates = imageOptions.filter(img => img.gen === vm.gen);
+    const allowedArch = allowedArchitecturesFor(vm);
+    candidates = candidates.filter(img => allowedArch.includes(img.arch || 'x64'));
+
+    const controller = vm.diskControllerType;
+    if (controller === 'NVMe') candidates = candidates.filter(img => !!img.nvmeCapable);
+    if (controller === 'SCSI') candidates = candidates.filter(img => !!img.scsiCapable);
+
+    if (includePublisherFilter) {
+      const publisher = String(vm.publisherFilter || '').trim();
+      if (publisher) candidates = candidates.filter(img => String((img.ref && img.ref.publisher) || '') === publisher);
+    }
+
+    return candidates;
+  }
+
+  function filterImagesFor(vm) {
+    // Filter by generation + architecture + controller + optional publisher.
+    return filteredImages(vm, true);
+  }
+
+function baseFilteredImagesFor(vm) {
+  // Same as above but without publisher filter (used to populate publisher list).
+  return filteredImages(vm, false);
+}
+
+function publishersFor(vm) {
+  const pubs = new Set(baseFilteredImagesFor(vm).map(i => (i.ref && i.ref.publisher) || '').filter(Boolean));
+  return Array.from(pubs).sort((a, b) => String(a).localeCompare(String(b)));
+}
+let vms = [
+  {
+    id: uid(),
+    name: 'vm1',
+    size: 'Standard_D4s_v5',
+    gen: 'Gen2',
+    imageKey: 'ubuntu_24_04_lts_server_x64_gen2',
+    diskControllerType: 'SCSI',
+    customData: '',
+    rebootRequired: false,
+    nics: [ defaultNic(0) ],
+    disks: []
+  }
+];
+
+let active = 0;
+
+  // -----------------------------
+  // ARM Generator (pure transform from sanitized VM model -> ARM template object)
+  // -----------------------------
+  function generateArmTemplate(vms) {
+    const imageMap = Object.fromEntries(imageOptions.map(o => [o.key, o.ref]));
+    const locationExpr = "[resourceGroup().location]";
+    const hasAnyUltraSsdDataDisk = (vms || []).some(vm => (vm.disks || []).some(d => d && d.sku === 'UltraSSD_LRS'));
+
+    const template = {
+      "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "adminUsername": { "type": "string", "defaultValue": "azureuser" },
+        "adminPassword": { "type": "secureString" },
+        "ultraAvailabilityZone": {
+          "type": "string",
+          "defaultValue": "1",
+          "allowedValues": ["1", "2", "3"],
+          "metadata": {
+            "description": "Availability Zone used when UltraSSD_LRS requires zonal placement."
+          }
+        }
+      },
+      "variables": {
+        "vnetName": "labVnet",
+        "subnetName": "default",
+        "nsgName": "labNsg",
+        "addressPrefix": "10.1.0.0/16",
+        "subnetPrefix": "10.1.0.0/24"
+      },
+      "resources": [],
+      "outputs": { "vmFqdns": { "type": "array", "value": [] } }
+    };
+
+    if (!hasAnyUltraSsdDataDisk) {
+      delete template.parameters.ultraAvailabilityZone;
+    }
+
+    template.resources.push({
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('nsgName')]",
+      "location": locationExpr,
+      "properties": {
+        "securityRules": [
+          {
+            "name": "inbound_ssh_azurecloud",
+            "properties": {
+              "access": "Allow",
+              "protocol": "Tcp",
+              "direction": "Inbound",
+              "priority": 100,
+              "sourceAddressPrefix": "AzureCloud",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "22"
+            }
+          }
+        ]
+      }
+    });
+
+    template.resources.push({
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('vnetName')]",
+      "location": locationExpr,
+      "properties": { "addressSpace": { "addressPrefixes": ["[variables('addressPrefix')]"] } }
+    });
+
+    template.resources.push({
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', variables('vnetName'), variables('subnetName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+      ],
+      "properties": {
+        "addressPrefix": "[variables('subnetPrefix')]",
+        "networkSecurityGroup": { "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]" }
+      }
+    });
+
+    vms.forEach(vm => {
+      const vmName = vm.name;
+      const nics = (vm.nics && vm.nics.length) ? vm.nics : [ defaultNic(0) ];
+      const allowAccel = accelNetSupportedFor(vm);
+      const hasUltraSsdDataDisk = (vm.disks || []).some(d => d && d.sku === 'UltraSSD_LRS');
+
+      // Per NIC: optional PIP + NIC
+      nics.forEach(nic => {
+        const nicName = `${vmName}-${nic.name}`;
+        const pipName = `${vmName}-${nic.name}-pip`;
+
+        if (nic.publicIp) {
+          const dnsLabel = `[concat('${vmName}-${nic.name}', uniqueString(resourceGroup().id))]`;
+          const pipResource = {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2024-05-01",
+            "name": pipName,
+            "location": locationExpr,
+            "sku": { "name": "Standard" },
+            "properties": {
+              "publicIPAllocationMethod": "Static",
+              "publicIPAddressVersion": "IPv4",
+              "dnsSettings": { "domainNameLabel": dnsLabel }
+            }
+          };
+          // Ultra disks require zonal VM placement for these sizes; keep PIP aligned.
+          if (hasUltraSsdDataDisk) pipResource.zones = ["[parameters('ultraAvailabilityZone')]"];
+          template.resources.push(pipResource);
+          template.outputs.vmFqdns.value.push(
+            `[reference(resourceId('Microsoft.Network/publicIPAddresses', '${pipName}')).dnsSettings.fqdn]`
+          );
+        }
+
+        const nicDepends = ["[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"];
+        if (nic.publicIp) nicDepends.unshift(`[resourceId('Microsoft.Network/publicIPAddresses', '${pipName}')]`);
+
+        const ipconfigProps = {
+          "subnet": { "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]" },
+          "privateIPAllocationMethod": "Dynamic"
+        };
+        if (nic.publicIp) ipconfigProps.publicIPAddress = { "id": `[resourceId('Microsoft.Network/publicIPAddresses', '${pipName}')]` };
+
+        template.resources.push({
+          "type": "Microsoft.Network/networkInterfaces",
+          "apiVersion": "2024-05-01",
+          "name": nicName,
+          "location": locationExpr,
+          "dependsOn": nicDepends,
+          "properties": {
+            "enableAcceleratedNetworking": allowAccel ? resolvedAccelForNic(vm, nic) : false,
+            "ipConfigurations": [ { "name": "ipconfig1", "properties": ipconfigProps } ]
+          }
+        });
+      });
+
+      const vmNicRefs = nics.map((nic, idx) => ({
+        "id": `[resourceId('Microsoft.Network/networkInterfaces', '${vmName}-${nic.name}')]`,
+        "properties": { "primary": idx === 0 }
+      }));
+
+      const vmDepends = nics.map(nic => `[resourceId('Microsoft.Network/networkInterfaces', '${vmName}-${nic.name}')]`);
+      const selectedImage = imageByKey(vm.imageKey);
+      const selectedImageGen = selectedImage ? selectedImage.gen : vm.gen;
+      const customDataRaw = String(vm.customData || '');
+      const encodedCustomData = encodeCustomDataForArm(customDataRaw, !!vm.rebootRequired);
+
+      const storageProfile = {
+        "imageReference": imageMap[vm.imageKey],
+        "osDisk": { "createOption": "FromImage", "managedDisk": { "storageAccountType": "StandardSSD_LRS" } },
+        "dataDisks": (vm.disks || []).map((d, lun) => ({
+          "lun": lun,
+          "createOption": "Empty",
+          "diskSizeGB": d.sizeGB,
+          "managedDisk": { "storageAccountType": d.sku }
+        }))
+      };
+      // diskControllerType is valid only for Generation 2 VM/image combinations.
+      if (vm.diskControllerType && vm.gen === 'Gen2' && selectedImageGen === 'Gen2') {
+        storageProfile.diskControllerType = vm.diskControllerType;
+      }
+
+      const osProfile = {
+        "computerName": vmName,
+        "adminUsername": "[parameters('adminUsername')]",
+        "adminPassword": "[parameters('adminPassword')]"
+      };
+      if (encodedCustomData) osProfile.customData = encodedCustomData;
+
+      const vmProperties = {
+        "hardwareProfile": { "vmSize": vm.size },
+        "storageProfile": storageProfile,
+        "networkProfile": { "networkInterfaces": vmNicRefs },
+        "osProfile": osProfile,
+        "diagnosticsProfile": { "bootDiagnostics": { "enabled": true } }
+      };
+      if (hasUltraSsdDataDisk) {
+        vmProperties.additionalCapabilities = { "ultraSSDEnabled": true };
+      }
+
+      const vmResource = {
+        "type": "Microsoft.Compute/virtualMachines",
+        "apiVersion": "2023-03-01",
+        "name": vmName,
+        "location": locationExpr,
+        "dependsOn": vmDepends,
+        "properties": vmProperties
+      };
+      // Ultra disks require a zonal VM for these SKUs (1/2/3). Default to zone 1.
+      if (hasUltraSsdDataDisk) vmResource.zones = ["[parameters('ultraAvailabilityZone')]"];
+
+      template.resources.push(vmResource);
+    });
+
+    return template;
+  }
+
+  // -----------------------------
+  // UI rendering and interaction
+  // -----------------------------
+  const $ = (id) => document.getElementById(id);
+
+  function ensureNic(vm) {
+    if (!vm.nics || vm.nics.length === 0) vm.nics = [ defaultNic(0) ];
+  }
+
+  function renderTabs() {
+    const tabsEl = $('tabs');
+    tabsEl.innerHTML = '';
+    vms.forEach((vm, idx) => {
+      const b = document.createElement('button');
+      b.className = 'tab' + (idx === active ? ' active' : '');
+      b.textContent = vm.name || `vm${idx+1}`;
+      b.onclick = () => { active = idx; render(); };
+      tabsEl.appendChild(b);
+    });
+    $('removeVmBtn').disabled = vms.length <= 1;
+  }
+
+  function populateSizeSelect() {
+    const sel = $('vmSize');
+    if (sel.children.length) return;
+    sizeOptions.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.name;
+      o.textContent = s.name;
+      sel.appendChild(o);
+    });
+  }
+
+  function populateGenSelect(vm) {
+    const sel = $('vmGen');
+    sel.innerHTML = '';
+    const allowed = allowedGenerationsFor(vm);
+    allowed.forEach(g => {
+      const o = document.createElement('option');
+      o.value = g;
+      o.textContent = g;
+      sel.appendChild(o);
+    });
+    if (!allowed.includes(vm.gen)) vm.gen = allowed[0];
+    sel.value = vm.gen;
+    sel.disabled = allowed.length <= 1;
+  }
+
+  function populateControllerSelect(vm) {
+    const sel = $('diskController');
+    sel.innerHTML = '';
+    const allowed = allowedControllersFor(vm);
+    allowed.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c;
+      o.textContent = c;
+      sel.appendChild(o);
+    });
+    if (!allowed.includes(vm.diskControllerType)) vm.diskControllerType = allowed[0];
+    sel.value = vm.diskControllerType;
+    sel.disabled = allowed.length <= 1;
+  }
+
+  function populatePublisherSelect(vm) {
+    const sel = $('vmPublisher');
+    if (!sel) return;
+    sel.innerHTML = '';
+    const pubs = publishersFor(vm);
+
+    const all = document.createElement('option');
+    all.value = '';
+    all.textContent = 'All publishers';
+    sel.appendChild(all);
+
+    pubs.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p;
+      o.textContent = p;
+      sel.appendChild(o);
+    });
+
+    if (vm.publisherFilter && !pubs.includes(vm.publisherFilter)) vm.publisherFilter = '';
+    sel.value = vm.publisherFilter || '';
+  }
+
+  function populateImageSelect(vm) {
+    const sel = $('vmImage');
+    sel.innerHTML = '';
+    const imgs = filterImagesFor(vm);
+    imgs.forEach(img => {
+      const o = document.createElement('option');
+      o.value = img.key;
+      o.textContent = img.label;
+      sel.appendChild(o);
+    });
+    if (!imgs.find(i => i.key === vm.imageKey)) vm.imageKey = imgs[0] ? imgs[0].key : '';
+    sel.value = vm.imageKey;
+  }
+
+  function renderHints(vm) {
+    const sz = sizeByName(vm.size);
+    const accelMode = accelNetModeFor(vm);
+    const accelText = accelMode === 'required' ? 'Required' : (accelMode === 'unsupported' ? 'Not supported' : 'Supported (optional)');
+    $('sizeHint').textContent = `Supports: Arch ${allowedArchitecturesFor(vm).join('/')} | ${sz.tags.generations.join(', ')} | DiskCtl (for ${vm.gen}): ${allowedControllersFor(vm).join(', ')} | AccelNet: ${accelText}`;
+
+    const imgs = filterImagesFor(vm);
+    const notes = [];
+    const allowedCtl = allowedControllersFor(vm);
+  if (allowedCtl.length === 1 && allowedCtl[0] === 'NVMe') {
+      notes.push('NVMe-only size: images must be NVMe-tagged (verify with az vm image show).');
+    }
+    $('imageHint').textContent = imgs.length ? notes.join(' ') : 'No images match this size. Add more image mappings or relax filters.';
+  }
+
+  function renderVmSummaryTable() {
+    const host = $('vmSummary');
+    if (!host) return;
+
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const td = (v) => {
+      const t = String(v ?? '-');
+      return `<td><span class="truncate-cell" title="${esc(t)}">${esc(t)}</span></td>`;
+    };
+
+    if (!vms.length) {
+      host.innerHTML = '<div class="muted">No VMs defined.</div>';
+      return;
+    }
+
+    const rows = vms.map(vm => {
+      const img = imageByKey(vm.imageKey);
+      const nicCount = (vm.nics || []).length;
+      const publicIps = (vm.nics || []).filter(n => !!n.publicIp).length;
+      const diskCount = (vm.disks || []).length;
+      return `<tr>
+        ${td(vm.name)}
+        ${td(vm.size)}
+        ${td(img ? img.label : '-')}
+        ${td(vm.diskControllerType || '-')}
+        ${td(`${nicCount} (Public IPs: ${publicIps})`)}
+        ${td(String(diskCount))}
+      </tr>`;
+    }).join('');
+
+    host.innerHTML = `<table class="summary">
+      <thead>
+        <tr>
+          <th>VM Name</th>
+          <th>VM Size</th>
+          <th>Image</th>
+          <th>Disk Controller</th>
+          <th>NICs</th>
+          <th>Data Disks</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function renderNics(vm) {
+    ensureNic(vm);
+    const list = $('nicList');
+    list.innerHTML = '';
+    const nics = vm.nics || [];
+    $('noNicMsg').style.display = nics.length ? 'none' : 'block';
+
+    const allowAccel = accelNetSupportedFor(vm);
+    const requireAccel = accelNetRequiredFor(vm);
+
+    nics.forEach((nic, idx) => {
+      const box = document.createElement('div');
+      box.className = 'box';
+
+      const header = document.createElement('div');
+      header.className = 'row';
+      header.innerHTML = `<div><strong>${nic.name}</strong> <span class="muted">${idx===0 ? '(primary)' : ''}</span></div>`;
+
+      const rm = document.createElement('button');
+      rm.className = 'danger';
+      rm.textContent = 'Remove NIC';
+      rm.disabled = nics.length <= 1;
+      rm.onclick = () => { vm.nics.splice(idx, 1); render(); };
+      header.appendChild(rm);
+
+      const grid = document.createElement('div');
+      grid.className = 'grid3';
+
+      const nameWrap = document.createElement('div');
+      nameWrap.innerHTML = `<label>NIC Name</label><input value="${nic.name}" />`;
+      nameWrap.querySelector('input').oninput = (e) => { nic.name = (e.target.value || '').trim() || `nic${idx+1}`; renderTabs(); updateOutput(); };
+
+      const accWrap = document.createElement('div');
+      if (!allowAccel) {
+        nic.accelerated = false;
+        accWrap.innerHTML = `<label>Accelerated Networking</label>
+          <div class="muted">Not supported for this VM size.</div>`;
+      } else {
+        if (requireAccel) nic.accelerated = true;
+        accWrap.innerHTML = `<label>Accelerated Networking</label>
+          <div class="toggle"><input type="checkbox" ${resolvedAccelForNic(vm, nic) ? 'checked' : ''} ${requireAccel ? 'disabled' : ''} /> <span class="muted">${requireAccel ? 'Required by selected VM size' : 'enableAcceleratedNetworking'}</span></div>`;
+        const accCb = accWrap.querySelector('input');
+        if (accCb) accCb.onchange = (e) => { nic.accelerated = requireAccel ? true : !!e.target.checked; updateOutput(); };
+      }
+
+      const pipWrap = document.createElement('div');
+      pipWrap.innerHTML = `<label>Public IP</label>
+        <div class="toggle"><input type="checkbox" ${nic.publicIp ? 'checked' : ''} /> <span class="muted">create Public IP + DNS</span></div>`;
+      pipWrap.querySelector('input').onchange = (e) => { nic.publicIp = !!e.target.checked; updateOutput(); };
+
+      grid.appendChild(nameWrap);
+      grid.appendChild(accWrap);
+      grid.appendChild(pipWrap);
+
+      box.appendChild(header);
+      box.appendChild(grid);
+      list.appendChild(box);
+    });
+  }
+
+  function renderDisks(vm) {
+    const diskList = $('diskList');
+    diskList.innerHTML = '';
+    const disks = vm.disks || [];
+    const supportedSkus = supportedDiskSkusFor(vm);
+    $('noDiskMsg').style.display = disks.length ? 'none' : 'block';
+
+    disks.forEach((d, di) => {
+      const box = document.createElement('div');
+      box.className = 'box';
+
+      const grid = document.createElement('div');
+      grid.className = 'grid3';
+
+      const sizeWrap = document.createElement('div');
+      sizeWrap.innerHTML = `<label>Size (GB)</label><input type="number" min="1" value="${d.sizeGB}" />`;
+      sizeWrap.querySelector('input').oninput = (e) => { d.sizeGB = Number(e.target.value || 0); updateOutput(); };
+
+      const skuWrap = document.createElement('div');
+      const skuSel = document.createElement('select');
+      supportedSkus.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; skuSel.appendChild(o); });
+      if (!supportedSkus.includes(d.sku)) d.sku = defaultDiskSkuFor(vm);
+      skuSel.value = d.sku;
+      skuSel.onchange = (e) => { d.sku = e.target.value; updateOutput(); };
+      skuWrap.appendChild(document.createElement('label')).textContent = 'SKU';
+      skuWrap.appendChild(skuSel);
+
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'danger';
+      rmBtn.textContent = 'Remove';
+      rmBtn.onclick = () => { disks.splice(di, 1); render(); };
+
+      grid.appendChild(sizeWrap);
+      grid.appendChild(skuWrap);
+      grid.appendChild(rmBtn);
+
+      box.appendChild(grid);
+      diskList.appendChild(box);
+    });
+  }
+
+  function sanitizeVm(vm, idx) {
+    // Single-VM normalization pass.
+    // This function is intentionally defensive and is called frequently before render/output.
+    vm.name = (vm.name || `vm${idx+1}`).trim() || `vm${idx+1}`;
+    vm.customData = String(vm.customData || '');
+    vm.rebootRequired = !!vm.rebootRequired;
+    vm.publisherFilter = String(vm.publisherFilter || '');
+    ensureNic(vm);
+    vm.nics.forEach((n, i) => { n.name = (n.name || `nic${i+1}`).trim() || `nic${i+1}`; });
+
+    const gens = allowedGenerationsFor(vm);
+    if (!gens.includes(vm.gen)) vm.gen = gens[0];
+
+    const ctls = allowedControllersFor(vm);
+    if (!ctls.includes(vm.diskControllerType)) vm.diskControllerType = ctls[0];
+
+    if (accelNetRequiredFor(vm)) vm.nics.forEach(n => n.accelerated = true);
+    else if (!accelNetSupportedFor(vm)) vm.nics.forEach(n => n.accelerated = false);
+
+    normalizeDataDiskSkus(vm);
+
+    let imgs = filterImagesFor(vm);
+    if (!imgs.length && vm.publisherFilter) {
+      vm.publisherFilter = '';
+      imgs = filterImagesFor(vm);
+    }
+    if (!imgs.find(i => i.key === vm.imageKey)) vm.imageKey = imgs[0] ? imgs[0].key : '';
+
+    return vm;
+  }
+
+  function sanitizeAllVms() {
+    // Global normalization pass.
+    vms.forEach((vm, idx) => sanitizeVm(vm, idx));
+  }
+
+  function updateOutput() {
+    // Main recompute step after any user change:
+    // sanitize -> validate names -> generate ARM -> update textarea + summary.
+    sanitizeAllVms();
+    renderVmSummaryTable();
+
+    const hasNameErrors = hasAnyVmNameErrors();
+    $('copyBtn').disabled = hasNameErrors;
+    $('downloadBtn').disabled = hasNameErrors;
+    if (hasNameErrors) {
+      $('output').value = 'Fix VM name errors before generating the ARM template.';
+      return;
+    }
+
+    const arm = generateArmTemplate(vms);
+    $('output').value = JSON.stringify(arm, null, 2);
+  }
+
+  function render() {
+    // Main UI render pipeline for active VM tab.
+    populateSizeSelect();
+    sanitizeAllVms();
+    renderTabs();
+
+    const vm = vms[active];
+
+    $('vmMeta').textContent = `VM ${active + 1} of ${vms.length}`;
+
+    $('vmName').value = vm.name;
+    const nameErr = $('vmNameError');
+    if (nameErr) {
+      nameErr.textContent = vmNameErrorAt(active);
+    }
+    $('vmCustomData').value = vm.customData || '';
+    $('vmRebootRequired').checked = !!vm.rebootRequired;
+    $('vmSize').value = vm.size;
+
+    populateGenSelect(vm);
+    populateControllerSelect(vm);
+    populatePublisherSelect(vm);
+    populateImageSelect(vm);
+    renderHints(vm);
+    renderNics(vm);
+    renderDisks(vm);
+
+    updateOutput();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Event wiring (mutations happen here, then render()/updateOutput() keeps UI consistent)
+  // ---------------------------------------------------------------------------
+  // Pattern:
+  // - mutate active VM model
+  // - auto-correct incompatible fields when needed
+  // - optionally show toast for user awareness
+  // - call render() (full refresh) or updateOutput() (cheap refresh)
+  // ---------------------------------------------------------------------------
+  // Events
+  $('addVmBtn').onclick = () => {
+    const vmName = nextDefaultVmName();
+    const defaultSize = sizeOptions[0].name;
+    const vm = {
+      id: uid(),
+      name: vmName,
+      size: defaultSize,
+      gen: allowedGenerationsFor({size: defaultSize})[0],
+      imageKey: '',
+      diskControllerType: allowedControllersFor({size: defaultSize})[0],
+      publisherFilter: '',
+      customData: '',
+      rebootRequired: false,
+      nics: [ defaultNic(0) ],
+      disks: []
+    };
+    const imgs = filterImagesFor(vm);
+    vm.imageKey = imgs[0] ? imgs[0].key : '';
+    vms.push(vm);
+    active = vms.length - 1;
+    render();
+  };
+
+  $('cloneVmBtn').onclick = () => {
+    const src = vms[active];
+    if (!src) return;
+
+    const clone = {
+      ...src,
+      id: uid(),
+      name: `${String(src.name || 'vm')}-clone`,
+      publisherFilter: String(src.publisherFilter || ''),
+      customData: String(src.customData || ''),
+      nics: (src.nics || []).map((n, i) => ({
+        ...n,
+        id: uid(),
+        name: String(n.name || `nic${i+1}`)
+      })),
+      disks: (src.disks || []).map(d => ({ ...d }))
+    };
+
+    vms.push(clone);
+    active = vms.length - 1;
+    render();
+  };
+
+  $('removeVmBtn').onclick = () => {
+    if (vms.length <= 1) return;
+    vms.splice(active, 1);
+    active = Math.max(0, active - 1);
+    render();
+  };
+
+  $('addNicBtn').onclick = () => { const vm = vms[active]; ensureNic(vm); vm.nics.push(defaultNic(vm.nics.length)); render(); };
+  $('addDiskBtn').onclick = () => {
+    const vm = vms[active];
+    vm.disks = vm.disks || [];
+    vm.disks.push({ sizeGB: 128, sku: defaultDiskSkuFor(vm) });
+    render();
+  };
+
+  $('vmName').oninput = (e) => {
+    vms[active].name = e.target.value;
+    renderTabs();
+    const nameErr = $('vmNameError');
+    if (nameErr) {
+      nameErr.textContent = vmNameErrorAt(active);
+    }
+    updateOutput();
+  };
+  $('vmCustomData').oninput = (e) => {
+    vms[active].customData = e.target.value || '';
+    updateOutput();
+  };
+  $('vmRebootRequired').onchange = (e) => {
+    vms[active].rebootRequired = !!e.target.checked;
+    updateOutput();
+  };
+  $('vmSize').onchange = (e) => {
+  const vm = vms[active];
+  const prevGen = vm.gen;
+  const prevCtl = vm.diskControllerType;
+  const prevImageKey = vm.imageKey;
+  vm.size = e.target.value;
+
+  // Size may constrain generation + controller.
+  const gens = allowedGenerationsFor(vm);
+  if (!gens.includes(vm.gen)) vm.gen = gens[0];
+  const ctls = allowedControllersFor(vm);
+  if (!ctls.includes(vm.diskControllerType)) vm.diskControllerType = ctls[0];
+
+  // Image may be forced by architecture/gen/controller filters.
+  const imgs = filterImagesFor(vm);
+  if (!imgs.find(i => i.key === vm.imageKey)) vm.imageKey = imgs[0] ? imgs[0].key : '';
+  const changedSkus = normalizeDataDiskSkus(vm);
+
+  if (prevGen !== vm.gen && prevCtl !== vm.diskControllerType) {
+    showToast('Adjusted VM settings', `Size changed. Gen '${prevGen}'→'${vm.gen}', Controller '${prevCtl}'→'${vm.diskControllerType}'.`);
+  } else if (prevGen !== vm.gen) {
+    showToast('Adjusted VM generation', `Size changed. Gen '${prevGen}' isn't supported, switched to '${vm.gen}'.`);
+  } else if (prevCtl !== vm.diskControllerType) {
+    showToast('Adjusted disk controller', `Size changed. Controller '${prevCtl}' isn't supported, switched to '${vm.diskControllerType}'.`);
+  }
+
+  if (prevImageKey !== vm.imageKey) {
+    const prevLabel = (imageByKey(prevImageKey) || {}).label || prevImageKey || 'previous image';
+    const nextLabel = (imageByKey(vm.imageKey) || {}).label || vm.imageKey || 'no image';
+    showToast('Adjusted OS image', `Size architecture/capabilities changed. '${prevLabel}' → '${nextLabel}'.`);
+  }
+
+  if (changedSkus > 0) {
+    showToast('Adjusted data disk SKU', `Size changed. ${changedSkus} data disk(s) were switched to supported SKU values.`);
+  }
+
+  render();
+};
+  $('vmGen').onchange = (e) => {
+  const vm = vms[active];
+  const prevCtl = vm.diskControllerType;
+  const prevImageKey = vm.imageKey;
+  vm.gen = e.target.value;
+
+  // If controller is no longer allowed for selected generation, auto-fix and explain.
+  const allowed = allowedControllersFor(vm);
+  if (!allowed.includes(vm.diskControllerType)) {
+    vm.diskControllerType = allowed[0];
+    showToast('Adjusted disk controller', `Selected ${vm.gen}. Controller '${prevCtl}' isn't supported, switched to '${vm.diskControllerType}'.`);
+  }
+
+  const imgs = filterImagesFor(vm);
+  if (!imgs.find(i => i.key === vm.imageKey)) {
+    vm.imageKey = imgs[0] ? imgs[0].key : '';
+    const prevLabel = (imageByKey(prevImageKey) || {}).label || prevImageKey || 'previous image';
+    const nextLabel = (imageByKey(vm.imageKey) || {}).label || vm.imageKey || 'no image';
+    showToast('Adjusted OS image', `Generation/controller changed. '${prevLabel}' → '${nextLabel}'.`);
+  }
+
+  render();
+};
+  $('vmImage').onchange = (e) => { vms[active].imageKey = e.target.value; updateOutput(); };
+  $('vmPublisher').onchange = (e) => {
+    const vm = vms[active];
+    const prevImageKey = vm.imageKey;
+    vm.publisherFilter = e.target.value || '';
+    const imgs = filterImagesFor(vm);
+    if (!imgs.find(i => i.key === vm.imageKey)) vm.imageKey = imgs[0] ? imgs[0].key : '';
+    if (prevImageKey !== vm.imageKey) {
+      const prevLabel = (imageByKey(prevImageKey) || {}).label || prevImageKey || 'previous image';
+      const nextLabel = (imageByKey(vm.imageKey) || {}).label || vm.imageKey || 'no image';
+      showToast('Adjusted OS image', `Publisher filter changed. '${prevLabel}' → '${nextLabel}'.`);
+    }
+    render();
+  };
+  $('diskController').onchange = (e) => {
+    const vm = vms[active];
+    const prevImageKey = vm.imageKey;
+    vm.diskControllerType = e.target.value;
+
+    const imgs = filterImagesFor(vm);
+    if (!imgs.find(i => i.key === vm.imageKey)) {
+      vm.imageKey = imgs[0] ? imgs[0].key : '';
+      const prevLabel = (imageByKey(prevImageKey) || {}).label || prevImageKey || 'previous image';
+      const nextLabel = (imageByKey(vm.imageKey) || {}).label || vm.imageKey || 'no image';
+      showToast('Adjusted OS image', `Disk controller changed. '${prevLabel}' → '${nextLabel}'.`);
+    }
+
+    render();
+  };
+
+  $('copyBtn').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($('output').value);
+      $('copyBtn').textContent = 'Copied!';
+      setTimeout(() => $('copyBtn').textContent = 'Copy', 900);
+    } catch (e) {
+      alert('Clipboard copy failed. You can manually copy from the textarea.');
+    }
+  };
+
+  $('downloadBtn').onclick = () => {
+    const blob = new Blob([$('output').value], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'azuredeploy.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  $('helpBtn').onclick = (e) => {
+    e.stopPropagation();
+    const balloon = $('helpBalloon');
+    if (!balloon) return;
+    const nextShow = !balloon.classList.contains('show');
+    balloon.classList.toggle('show', nextShow);
+    balloon.setAttribute('aria-hidden', nextShow ? 'false' : 'true');
+  };
+
+  document.addEventListener('click', (e) => {
+    const balloon = $('helpBalloon');
+    const wrap = document.querySelector('.help-wrap');
+    if (!balloon || !wrap) return;
+    if (!wrap.contains(e.target)) {
+      balloon.classList.remove('show');
+      balloon.setAttribute('aria-hidden', 'true');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const balloon = $('helpBalloon');
+    if (!balloon) return;
+    balloon.classList.remove('show');
+    balloon.setAttribute('aria-hidden', 'true');
+  });
+
+  render();
+</script>
+
+<div id="toast" class="toast" aria-live="polite" aria-atomic="true">
+  <div class="title" id="toastTitle"></div>
+  <div class="msg" id="toastMsg"></div>
+</div>
+
+</body>
+</html>
