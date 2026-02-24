@@ -102,6 +102,19 @@
  .toast.show {opacity: 1; transform: translateY(0);}
  .toast .title {font-size: 13px; font-weight: 900; margin-bottom: 2px;}
  .toast .msg {color: #e5e7eb;}
+
+ .size-filter-wrap { position: relative; font-size: 12px; }
+ .size-filter-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
+ .size-filter-actions { display: inline-flex; gap: 8px; align-items: center; }
+ .size-filter-actions button { font-size: 12px; font-weight: 700; padding: 6px 9px; }
+ .size-filter-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; min-height: 34px; align-items: center; justify-content: flex-end; margin-left: auto; }
+ .chip-btn { border: 1px solid #c9d8e6; border-radius: 999px; padding: 5px 9px; background: #e8f0f8; color: #1f2937; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+ .chip-btn .x { font-weight: 900; color: #6b7280; }
+ .size-filter-panel { position: absolute; top: calc(100% + 8px); right: 0; width: min(680px, 95vw); border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: #fff; box-shadow: 0 12px 28px rgba(0,0,0,0.16); z-index: 40; }
+ .size-filter-panel-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+ .size-filter-panel-row select { min-width: 220px; width: auto; font-size: 12px; padding: 7px 8px; }
+ .size-filter-panel-row button { font-size: 12px; font-weight: 700; padding: 6px 9px; }
+ .size-filter-panel-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -157,6 +170,28 @@
               <label for="vmSize">VM Size</label>
               <select id="vmSize"></select>
               <div class="muted" id="sizeHint"></div>
+            </div>
+
+            <div style="grid-column: 1 / -1;">
+              <div class="size-filter-wrap">
+                <div class="size-filter-toolbar">
+                  <div class="size-filter-actions">
+                    <button id="addSizeFilterBtn" type="button">+ Add VM filter</button>
+                    <button id="clearSizeFiltersBtn" type="button">Clear</button>
+                  </div>
+                  <div id="sizeFilterChips" class="size-filter-chips"></div>
+                </div>
+                <div id="sizeFilterPanel" class="size-filter-panel" style="display:none;">
+                  <div class="size-filter-panel-title">Add filter</div>
+                  <div class="size-filter-panel-row">
+                    <select id="sizeFilterField"></select>
+                    <span>:</span>
+                    <select id="sizeFilterValue"></select>
+                    <button id="sizeFilterOkBtn" type="button" class="primary">OK</button>
+                    <button id="sizeFilterCancelBtn" type="button">Cancel</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div>
@@ -554,7 +589,9 @@ function showToast(title, msg) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: false
       },
-      accelNetMode: 'required'
+      accelNetMode: 'required',
+      maxNics: 2,
+      maxDataDisks: 8
     }
   },
 
@@ -577,7 +614,9 @@ function showToast(title, msg) {
         PremiumV2_LRS: true,
         UltraSSD_LRS: true
       },
-      accelNetMode: 'optional'
+      accelNetMode: 'optional',
+      maxNics: 3,
+      maxDataDisks: 4
     }
   },
   // Standard_E32bds_v5
@@ -600,7 +639,9 @@ function showToast(title, msg) {
         PremiumV2_LRS: true,
         UltraSSD_LRS: true
       },
-      accelNetMode: 'optional'
+      accelNetMode: 'optional',
+      maxNics: 8,
+      maxDataDisks: 32
     }
   },
 
@@ -623,7 +664,9 @@ function showToast(title, msg) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: false
       },
-      accelNetMode: 'unsupported'
+      accelNetMode: 'unsupported',
+      maxNics: 3,
+      maxDataDisks: 4
     }
   },
 
@@ -646,7 +689,9 @@ function showToast(title, msg) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: false
       },
-      accelNetMode: 'optional'
+      accelNetMode: 'optional',
+      maxNics: 2,
+      maxDataDisks: 4
     }
   },
   // Standard_E2ps_v6
@@ -667,7 +712,9 @@ function showToast(title, msg) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: false
       },
-      accelNetMode: 'optional'
+      accelNetMode: 'optional',
+      maxNics: 2,
+      maxDataDisks: 8
     }
   },
   // Standard_D2ps_v6
@@ -688,12 +735,43 @@ function showToast(title, msg) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: false
       },
-      accelNetMode: 'optional'
+      accelNetMode: 'optional',
+      maxNics: 2,
+      maxDataDisks: 8
     }
   }
 ];
 
-const diskSkus = ['StandardSSD_LRS', 'Premium_LRS', 'PremiumV2_LRS', 'Standard_LRS', 'UltraSSD_LRS'];
+const maxDiskSizeGbBySku = {
+  // Managed disk max sizes (GiB) aligned to common Azure limits.
+  // Keep this object as the single source of truth for supported data disk SKUs.
+  StandardSSD_LRS: 32767,
+  Premium_LRS: 32767,
+  PremiumV2_LRS: 65536,
+  Standard_LRS: 32767,
+  UltraSSD_LRS: 65536
+};
+const diskSkus = Object.keys(maxDiskSizeGbBySku);
+
+const sizeFilters = {
+  arch: '',
+  gen: '',
+  controller: '',
+  diskSku: '',
+  accel: '',
+  minNics: '',
+  minDataDisks: ''
+};
+
+const sizeFilterMeta = {
+  arch: { label: 'Architecture', values: ['x64', 'Arm64'] },
+  gen: { label: 'Generation', values: ['Gen1', 'Gen2'] },
+  controller: { label: 'Disk controller', values: ['SCSI', 'NVMe'] },
+  diskSku: { label: 'Disk SKU support', values: diskSkus },
+  accel: { label: 'Accelerated networking', values: ['required', 'optional', 'unsupported'], valueLabels: { required: 'Required', optional: 'Optional', unsupported: 'Unsupported' } },
+  minNics: { label: 'Min max NICs', values: ['1', '2', '3', '4', '8', '16'] },
+  minDataDisks: { label: 'Min max data disks', values: ['1', '2', '4', '8', '16', '32'] }
+};
 
   // ---------------------------------------------------------------------------
   // View-model defaults and lookup helpers
@@ -706,11 +784,51 @@ const diskSkus = ['StandardSSD_LRS', 'Premium_LRS', 'PremiumV2_LRS', 'Standard_L
     return sizeOptions.find(s => s.name === name) || sizeOptions[0];
   }
 
+  function sizeMatchesFilters(size) {
+    const tags = (size && size.tags) || {};
+    const archs = tags.architectures || [];
+    const gens = tags.generations || [];
+    const ctlMap = tags.diskControllersByGen || {};
+    const diskSupport = tags.diskSkuSupport || {};
+    const accel = String(tags.accelNetMode || (tags.accelNet ? 'optional' : 'unsupported'));
+    const maxNics = Number(tags.maxNics || 0);
+    const maxDataDisks = Number(tags.maxDataDisks || 0);
+
+    if (sizeFilters.arch && !archs.includes(sizeFilters.arch)) return false;
+    if (sizeFilters.gen && !gens.includes(sizeFilters.gen)) return false;
+    if (sizeFilters.controller) {
+      const hasController = Object.values(ctlMap).some(arr => Array.isArray(arr) && arr.includes(sizeFilters.controller));
+      if (!hasController) return false;
+    }
+    if (sizeFilters.diskSku && !diskSupport[sizeFilters.diskSku]) return false;
+    if (sizeFilters.accel && accel !== sizeFilters.accel) return false;
+    if (sizeFilters.minNics && maxNics < Number(sizeFilters.minNics)) return false;
+    if (sizeFilters.minDataDisks && maxDataDisks < Number(sizeFilters.minDataDisks)) return false;
+
+    return true;
+  }
+
+  function filteredSizeOptions() {
+    return sizeOptions.filter(sizeMatchesFilters);
+  }
+
+  function sizeIsOutsideFilters(sizeName) {
+    const size = sizeByName(sizeName);
+    return !sizeMatchesFilters(size);
+  }
+
   function nextDefaultVmName() {
     const used = new Set(vms.map(v => String(v.name || '').trim().toLowerCase()).filter(Boolean));
     let n = 1;
     while (used.has(`vm${n}`.toLowerCase())) n += 1;
     return `vm${n}`;
+  }
+
+  function nextDefaultNicName(vm) {
+    const used = new Set((vm.nics || []).map(n => String((n && n.name) || '').trim().toLowerCase()).filter(Boolean));
+    let n = 1;
+    while (used.has(`nic${n}`.toLowerCase())) n += 1;
+    return `nic${n}`;
   }
 
   function nextCloneVmName(sourceName) {
@@ -778,6 +896,80 @@ const diskSkus = ['StandardSSD_LRS', 'Premium_LRS', 'PremiumV2_LRS', 'Standard_L
     return vms.some((_, i) => !!vmNameErrorAt(i));
   }
 
+  const MAX_AZ_NETWORK_RESOURCE_NAME_LEN = 80;
+
+  function nicNameMaxLengthForVmName(vmName) {
+    // NIC name contributes to both:
+    // - NIC resource: <vm_name>-<nic_name>
+    // - PIP resource: <vm_name>-<nic_name>-pip
+    // PIP is stricter: vm + 1 + nic + 4 <= 80  => nic <= 75 - vm
+    const vmLen = String(vmName || '').trim().length;
+    return Math.max(1, MAX_AZ_NETWORK_RESOURCE_NAME_LEN - vmLen - 5);
+  }
+
+  function nicNameFormatError(vmName, nicName) {
+    const trimmed = String(nicName || '').trim();
+    if (!trimmed) return 'NIC name is required.';
+
+    const maxLen = nicNameMaxLengthForVmName(vmName);
+    if (trimmed.length > maxLen) {
+      return `NIC name is too long for this VM name. Max ${maxLen} chars so '${vmName}-${trimmed}' and '${vmName}-${trimmed}-pip' stay within ${MAX_AZ_NETWORK_RESOURCE_NAME_LEN} chars.`;
+    }
+
+    if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(trimmed)) {
+      return 'NIC name can use letters, numbers, and hyphen only, and must start/end with letter or number.';
+    }
+
+    return '';
+  }
+
+  function duplicateNicNamesSet(vm) {
+    const counts = new Map();
+    (vm.nics || []).forEach(nic => {
+      const key = String((nic && nic.name) || '').trim().toLowerCase();
+      if (!key) return;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const dupes = new Set();
+    counts.forEach((count, key) => {
+      if (count > 1) dupes.add(key);
+    });
+    return dupes;
+  }
+
+  function nicNameError(vm, nic) {
+    const formatErr = nicNameFormatError(vm.name, nic.name);
+    if (formatErr) return formatErr;
+
+    const key = String((nic && nic.name) || '').trim().toLowerCase();
+    if (!key) return 'NIC name is required.';
+    if (duplicateNicNamesSet(vm).has(key)) return 'NIC name must be unique inside the VM.';
+
+    return '';
+  }
+
+  function hasAnyNicNameErrors() {
+    return vms.some(vm => (vm.nics || []).some(nic => !!nicNameError(vm, nic)));
+  }
+
+  function diskSizeError(disk) {
+    const size = Number(disk && disk.sizeGB);
+    const sku = String((disk && disk.sku) || '');
+    const maxSize = maxDiskSizeGbBySku[sku] || 32767;
+
+    if (!Number.isFinite(size) || size <= 1) {
+      return 'Data disk size must be greater than 1 GB.';
+    }
+    if (size > maxSize) {
+      return `Data disk size exceeds limit for ${sku || 'selected SKU'}. Max ${maxSize} GB.`;
+    }
+    return '';
+  }
+
+  function hasAnyDiskValidationErrors() {
+    return vms.some(vm => (vm.disks || []).some(d => !!diskSizeError(d)));
+  }
+
   function allowedGenerationsFor(vm) {
     return sizeByName(vm.size).tags.generations;
   }
@@ -815,6 +1007,34 @@ function accelNetSupportedFor(vm) {
     if (mode === 'required') return true;
     if (mode === 'unsupported') return false;
     return !!nic.accelerated;
+  }
+
+  function maxNicsFor(vm) {
+    const tags = sizeByName(vm.size).tags || {};
+    return Number(tags.maxNics || 2);
+  }
+
+  function maxDataDisksFor(vm) {
+    const tags = sizeByName(vm.size).tags || {};
+    return Number(tags.maxDataDisks || 4);
+  }
+
+  function nicAttachmentCountError(vm) {
+    const max = maxNicsFor(vm);
+    const count = (vm.nics || []).length;
+    if (count > max) return `VM size ${vm.size} supports up to ${max} NIC(s). Current: ${count}.`;
+    return '';
+  }
+
+  function diskAttachmentCountError(vm) {
+    const max = maxDataDisksFor(vm);
+    const count = (vm.disks || []).length;
+    if (count > max) return `VM size ${vm.size} supports up to ${max} data disk(s). Current: ${count}.`;
+    return '';
+  }
+
+  function hasAnyAttachmentLimitErrors() {
+    return vms.some(vm => !!nicAttachmentCountError(vm) || !!diskAttachmentCountError(vm));
   }
 
   function diskSupportFlagsFor(vm) {
@@ -1130,15 +1350,100 @@ let active = 0;
     $('removeVmBtn').disabled = vms.length <= 1;
   }
 
-  function populateSizeSelect() {
+  function setSelectOptions(selectEl, values, labelsByValue) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    values.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = (labelsByValue && labelsByValue[v]) ? labelsByValue[v] : v;
+      selectEl.appendChild(o);
+    });
+  }
+
+  function setSizeFilterValueOptions() {
+    const fieldSel = $('sizeFilterField');
+    const valueSel = $('sizeFilterValue');
+    if (!fieldSel || !valueSel) return;
+
+    const key = fieldSel.value || 'arch';
+    const meta = sizeFilterMeta[key] || sizeFilterMeta.arch;
+    const labels = { '': 'Any' };
+    (meta.values || []).forEach(v => {
+      labels[v] = (meta.valueLabels && meta.valueLabels[v]) ? meta.valueLabels[v] : v;
+    });
+    setSelectOptions(valueSel, [''].concat(meta.values || []), labels);
+    valueSel.value = sizeFilters[key] || '';
+  }
+
+  function renderSizeFilterChips() {
+    const chips = $('sizeFilterChips');
+    if (!chips) return;
+    chips.innerHTML = '';
+
+    const active = Object.keys(sizeFilterMeta).filter(k => !!sizeFilters[k]);
+    active.forEach(k => {
+      const meta = sizeFilterMeta[k];
+      const raw = sizeFilters[k];
+      const shown = (meta.valueLabels && meta.valueLabels[raw]) ? meta.valueLabels[raw] : raw;
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip-btn';
+      chip.setAttribute('data-filter-key', k);
+      chip.innerHTML = `${meta.label}: ${shown} <span class="x">×</span>`;
+      chips.appendChild(chip);
+    });
+
+    if (!active.length) {
+      const muted = document.createElement('span');
+      muted.className = 'muted';
+      muted.style.marginTop = '0';
+      muted.textContent = 'No active filters';
+      chips.appendChild(muted);
+    }
+
+    const fieldSel = $('sizeFilterField');
+    const fieldLabels = {};
+    Object.keys(sizeFilterMeta).forEach(k => fieldLabels[k] = sizeFilterMeta[k].label);
+    setSelectOptions(fieldSel, Object.keys(sizeFilterMeta), fieldLabels);
+    if (fieldSel && !fieldSel.value) fieldSel.value = 'arch';
+    setSizeFilterValueOptions();
+  }
+
+  function alignVmSizeToActiveFilters(vm) {
+    const filtered = filteredSizeOptions();
+    if (!vm || !filtered.length) return;
+    if (!filtered.some(s => s.name === vm.size)) {
+      vm.size = filtered[0].name;
+    }
+  }
+
+  function populateSizeSelect(vm) {
     const sel = $('vmSize');
-    if (sel.children.length) return;
-    sizeOptions.forEach(s => {
+    sel.innerHTML = '';
+    const list = filteredSizeOptions();
+
+    list.forEach(s => {
       const o = document.createElement('option');
       o.value = s.name;
       o.textContent = s.name;
       sel.appendChild(o);
     });
+
+    if (!list.length) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = 'No VM sizes match filters';
+      sel.appendChild(o);
+      sel.value = '';
+      sel.disabled = true;
+      return;
+    }
+
+    sel.disabled = false;
+    if (vm && list.some(s => s.name === vm.size)) {
+      sel.value = vm.size;
+    }
   }
 
   function populateGenSelect(vm) {
@@ -1208,10 +1513,27 @@ let active = 0;
   }
 
   function renderHints(vm) {
+    const hintEl = $('sizeHint');
     const sz = sizeByName(vm.size);
     const accelMode = accelNetModeFor(vm);
     const accelText = accelMode === 'required' ? 'Required' : (accelMode === 'unsupported' ? 'Not supported' : 'Supported (optional)');
-    $('sizeHint').textContent = `Supports: Arch ${allowedArchitecturesFor(vm).join('/')} | ${sz.tags.generations.join(', ')} | DiskCtl (for ${vm.gen}): ${allowedControllersFor(vm).join(', ')} | AccelNet: ${accelText}`;
+    const hasMatchingSizes = filteredSizeOptions().length > 0;
+    const currentSizeMatches = !sizeIsOutsideFilters(vm.size);
+
+    if (!hasMatchingSizes) {
+      if (hintEl) {
+        hintEl.style.display = '';
+        hintEl.textContent = 'No VM size matches the filters.';
+      }
+    } else if (!currentSizeMatches) {
+      if (hintEl) {
+        hintEl.textContent = '';
+        hintEl.style.display = 'none';
+      }
+    } else if (hintEl) {
+      hintEl.style.display = '';
+      hintEl.textContent = `Supports: Arch ${allowedArchitecturesFor(vm).join('/')} | ${sz.tags.generations.join(', ')} | DiskCtl (for ${vm.gen}): ${allowedControllersFor(vm).join(', ')} | AccelNet: ${accelText} | Max NICs: ${maxNicsFor(vm)} | Max Data Disks: ${maxDataDisksFor(vm)}`;
+    }
 
     const imgs = filterImagesFor(vm);
     const notes = [];
@@ -1273,6 +1595,7 @@ let active = 0;
     list.innerHTML = '';
     const nics = vm.nics || [];
     $('noNicMsg').style.display = nics.length ? 'none' : 'block';
+    const nicLimitErr = nicAttachmentCountError(vm);
 
     const allowAccel = accelNetSupportedFor(vm);
     const requireAccel = accelNetRequiredFor(vm);
@@ -1296,8 +1619,24 @@ let active = 0;
       grid.className = 'grid3';
 
       const nameWrap = document.createElement('div');
-      nameWrap.innerHTML = `<label>NIC Name</label><input value="${nic.name}" />`;
-      nameWrap.querySelector('input').oninput = (e) => { nic.name = (e.target.value || '').trim() || `nic${idx+1}`; renderTabs(); updateOutput(); };
+      const nicErrText = nicNameError(vm, nic);
+      const nicMaxLen = nicNameMaxLengthForVmName(vm.name);
+      nameWrap.innerHTML = `<label>NIC Name</label><input value="${nic.name}" maxlength="${nicMaxLen}" />`;
+      nameWrap.querySelector('input').oninput = (e) => {
+        nic.name = (e.target.value || '').trim() || nextDefaultNicName(vm);
+
+        const errText = nicNameError(vm, nic);
+        const errEl = box.querySelector('.nic-line-error');
+        if (errEl) {
+          errEl.textContent = errText;
+          errEl.style.display = errText ? 'block' : 'none';
+        }
+        const fixEl = box.querySelector('.nic-line-fix');
+        if (fixEl) fixEl.style.display = errText ? 'block' : 'none';
+
+        renderTabs();
+        updateOutput();
+      };
 
       const accWrap = document.createElement('div');
       if (!allowAccel) {
@@ -1323,8 +1662,25 @@ let active = 0;
 
       box.appendChild(header);
       box.appendChild(grid);
+      const lineError = document.createElement('div');
+      lineError.className = 'error-text nic-line-error';
+      lineError.textContent = nicErrText;
+      lineError.style.display = nicErrText ? 'block' : 'none';
+      box.appendChild(lineError);
+      const lineFix = document.createElement('div');
+      lineFix.className = 'error-text nic-line-fix';
+      lineFix.textContent = 'Fix NIC name errors before generating the ARM template.';
+      lineFix.style.display = nicErrText ? 'block' : 'none';
+      box.appendChild(lineFix);
       list.appendChild(box);
     });
+
+    if (nicLimitErr) {
+      const limitErr = document.createElement('div');
+      limitErr.className = 'error-text';
+      limitErr.textContent = nicLimitErr;
+      list.appendChild(limitErr);
+    }
   }
 
   function renderDisks(vm) {
@@ -1333,24 +1689,48 @@ let active = 0;
     const disks = vm.disks || [];
     const supportedSkus = supportedDiskSkusFor(vm);
     $('noDiskMsg').style.display = disks.length ? 'none' : 'block';
+    const diskLimitErr = diskAttachmentCountError(vm);
 
     disks.forEach((d, di) => {
       const box = document.createElement('div');
       box.className = 'box';
+      const diskErrText = diskSizeError(d);
 
       const grid = document.createElement('div');
       grid.className = 'grid3';
 
       const sizeWrap = document.createElement('div');
-      sizeWrap.innerHTML = `<label>Size (GB)</label><input type="number" min="1" value="${d.sizeGB}" />`;
-      sizeWrap.querySelector('input').oninput = (e) => { d.sizeGB = Number(e.target.value || 0); updateOutput(); };
+      sizeWrap.innerHTML = `<label>Size (GB)</label><input type="number" min="2" value="${d.sizeGB}" />`;
+      sizeWrap.querySelector('input').oninput = (e) => {
+        d.sizeGB = Number(e.target.value || 0);
+        const errText = diskSizeError(d);
+        const errEl = box.querySelector('.disk-line-error');
+        if (errEl) {
+          errEl.textContent = errText;
+          errEl.style.display = errText ? 'block' : 'none';
+        }
+        const fixEl = box.querySelector('.disk-line-fix');
+        if (fixEl) fixEl.style.display = errText ? 'block' : 'none';
+        updateOutput();
+      };
 
       const skuWrap = document.createElement('div');
       const skuSel = document.createElement('select');
       supportedSkus.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; skuSel.appendChild(o); });
       if (!supportedSkus.includes(d.sku)) d.sku = defaultDiskSkuFor(vm);
       skuSel.value = d.sku;
-      skuSel.onchange = (e) => { d.sku = e.target.value; updateOutput(); };
+      skuSel.onchange = (e) => {
+        d.sku = e.target.value;
+        const errText = diskSizeError(d);
+        const errEl = box.querySelector('.disk-line-error');
+        if (errEl) {
+          errEl.textContent = errText;
+          errEl.style.display = errText ? 'block' : 'none';
+        }
+        const fixEl = box.querySelector('.disk-line-fix');
+        if (fixEl) fixEl.style.display = errText ? 'block' : 'none';
+        updateOutput();
+      };
       skuWrap.appendChild(document.createElement('label')).textContent = 'SKU';
       skuWrap.appendChild(skuSel);
 
@@ -1364,8 +1744,27 @@ let active = 0;
       grid.appendChild(rmBtn);
 
       box.appendChild(grid);
+      const lineError = document.createElement('div');
+      lineError.className = 'error-text disk-line-error';
+      lineError.textContent = diskErrText;
+      lineError.style.display = diskErrText ? 'block' : 'none';
+      box.appendChild(lineError);
+
+      const lineFix = document.createElement('div');
+      lineFix.className = 'error-text disk-line-fix';
+      lineFix.textContent = 'Fix data disk validation errors before generating the ARM template.';
+      lineFix.style.display = diskErrText ? 'block' : 'none';
+      box.appendChild(lineFix);
+
       diskList.appendChild(box);
     });
+
+    if (diskLimitErr) {
+      const limitErr = document.createElement('div');
+      limitErr.className = 'error-text';
+      limitErr.textContent = diskLimitErr;
+      diskList.appendChild(limitErr);
+    }
   }
 
   function sanitizeVm(vm, idx) {
@@ -1410,11 +1809,32 @@ let active = 0;
     sanitizeAllVms();
     renderVmSummaryTable();
 
-    const hasNameErrors = hasAnyVmNameErrors();
-    $('copyBtn').disabled = hasNameErrors;
-    $('downloadBtn').disabled = hasNameErrors;
-    if (hasNameErrors) {
-      $('output').value = 'Fix VM name errors before generating the ARM template.';
+    const hasVmNameErrors = hasAnyVmNameErrors();
+    const hasNicNameErrors = hasAnyNicNameErrors();
+    const hasDiskErrors = hasAnyDiskValidationErrors();
+    const hasAttachmentErrors = hasAnyAttachmentLimitErrors();
+    const hasValidationErrors = hasVmNameErrors || hasNicNameErrors || hasDiskErrors || hasAttachmentErrors;
+
+    $('copyBtn').disabled = hasValidationErrors;
+    $('downloadBtn').disabled = hasValidationErrors;
+    if (hasValidationErrors) {
+      if (hasAttachmentErrors) {
+        $('output').value = 'Fix VM size attachment limit errors (NIC/data disk counts) before generating the ARM template.';
+      } else if (hasVmNameErrors && hasNicNameErrors && hasDiskErrors) {
+        $('output').value = 'Fix VM, NIC, and data disk validation errors before generating the ARM template.';
+      } else if (hasVmNameErrors && hasNicNameErrors) {
+        $('output').value = 'Fix VM and NIC name errors before generating the ARM template.';
+      } else if (hasVmNameErrors && hasDiskErrors) {
+        $('output').value = 'Fix VM name and data disk validation errors before generating the ARM template.';
+      } else if (hasNicNameErrors && hasDiskErrors) {
+        $('output').value = 'Fix NIC and data disk validation errors before generating the ARM template.';
+      } else if (hasVmNameErrors) {
+        $('output').value = 'Fix VM name errors before generating the ARM template.';
+      } else if (hasDiskErrors) {
+        $('output').value = 'Fix data disk validation errors in the VM settings panel before generating the ARM template.';
+      } else {
+        $('output').value = 'Fix NIC validation errors in the VM settings panel before generating the ARM template.';
+      }
       return;
     }
 
@@ -1424,11 +1844,16 @@ let active = 0;
 
   function render() {
     // Main UI render pipeline for active VM tab.
-    populateSizeSelect();
+    renderSizeFilterChips();
     sanitizeAllVms();
     renderTabs();
 
     const vm = vms[active];
+
+    alignVmSizeToActiveFilters(vm);
+    sanitizeVm(vm, active);
+
+    populateSizeSelect(vm);
 
     $('vmMeta').textContent = `VM ${active + 1} of ${vms.length}`;
 
@@ -1440,6 +1865,8 @@ let active = 0;
     $('vmCustomData').value = vm.customData || '';
     $('vmRebootRequired').checked = !!vm.rebootRequired;
     $('vmSize').value = vm.size;
+    $('addNicBtn').disabled = (vm.nics || []).length >= maxNicsFor(vm);
+    $('addDiskBtn').disabled = (vm.disks || []).length >= maxDataDisksFor(vm);
 
     populateGenSelect(vm);
     populateControllerSelect(vm);
@@ -1462,9 +1889,51 @@ let active = 0;
   // - call render() (full refresh) or updateOutput() (cheap refresh)
   // ---------------------------------------------------------------------------
   // Events
+  $('sizeFilterField').onchange = () => setSizeFilterValueOptions();
+  $('addSizeFilterBtn').onclick = () => {
+    const p = $('sizeFilterPanel');
+    if (!p) return;
+    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+  };
+  $('sizeFilterOkBtn').onclick = () => {
+    const field = $('sizeFilterField').value;
+    const value = $('sizeFilterValue').value || '';
+    if (field) sizeFilters[field] = value;
+    $('sizeFilterPanel').style.display = 'none';
+    render();
+  };
+  $('sizeFilterCancelBtn').onclick = () => {
+    $('sizeFilterPanel').style.display = 'none';
+  };
+  document.addEventListener('click', (e) => {
+    const panel = $('sizeFilterPanel');
+    const wrap = document.querySelector('.size-filter-wrap');
+    if (!panel || !wrap) return;
+    if (!wrap.contains(e.target)) panel.style.display = 'none';
+  });
+  $('sizeFilterChips').onclick = (e) => {
+    const btn = e.target.closest('[data-filter-key]');
+    if (!btn) return;
+    const key = btn.getAttribute('data-filter-key');
+    if (!key) return;
+    sizeFilters[key] = '';
+    render();
+  };
+  $('clearSizeFiltersBtn').onclick = () => {
+    sizeFilters.arch = '';
+    sizeFilters.gen = '';
+    sizeFilters.controller = '';
+    sizeFilters.diskSku = '';
+    sizeFilters.accel = '';
+    sizeFilters.minNics = '';
+    sizeFilters.minDataDisks = '';
+    render();
+  };
+
   $('addVmBtn').onclick = () => {
     const vmName = nextDefaultVmName();
-    const defaultSize = sizeOptions[0].name;
+    const filtered = filteredSizeOptions();
+    const defaultSize = (filtered[0] || sizeOptions[0]).name;
     const vm = {
       id: uid(),
       name: vmName,
@@ -1515,10 +1984,25 @@ let active = 0;
     render();
   };
 
-  $('addNicBtn').onclick = () => { const vm = vms[active]; ensureNic(vm); vm.nics.push(defaultNic(vm.nics.length)); render(); };
+  $('addNicBtn').onclick = () => {
+    const vm = vms[active];
+    ensureNic(vm);
+    if ((vm.nics || []).length >= maxNicsFor(vm)) {
+      showToast('NIC limit reached', `VM size '${vm.size}' supports up to ${maxNicsFor(vm)} NIC(s).`);
+      return;
+    }
+    const nic = defaultNic(vm.nics.length);
+    nic.name = nextDefaultNicName(vm);
+    vm.nics.push(nic);
+    render();
+  };
   $('addDiskBtn').onclick = () => {
     const vm = vms[active];
     vm.disks = vm.disks || [];
+    if ((vm.disks || []).length >= maxDataDisksFor(vm)) {
+      showToast('Data disk limit reached', `VM size '${vm.size}' supports up to ${maxDataDisksFor(vm)} data disk(s).`);
+      return;
+    }
     vm.disks.push({ sizeGB: 128, sku: defaultDiskSkuFor(vm) });
     render();
   };
@@ -1526,6 +2010,7 @@ let active = 0;
   $('vmName').oninput = (e) => {
     vms[active].name = e.target.value;
     renderTabs();
+    renderNics(vms[active]);
     const nameErr = $('vmNameError');
     if (nameErr) {
       nameErr.textContent = vmNameErrorAt(active);
@@ -1574,6 +2059,16 @@ let active = 0;
 
   if (changedSkus > 0) {
     showToast('Adjusted data disk SKU', `Size changed. ${changedSkus} data disk(s) were switched to supported SKU values.`);
+  }
+
+  const nicOverflow = (vm.nics || []).length - maxNicsFor(vm);
+  if (nicOverflow > 0) {
+    showToast('NIC count exceeds size limit', `Size '${vm.size}' supports up to ${maxNicsFor(vm)} NIC(s). Remove ${nicOverflow} NIC(s).`);
+  }
+
+  const diskOverflow = (vm.disks || []).length - maxDataDisksFor(vm);
+  if (diskOverflow > 0) {
+    showToast('Data disk count exceeds size limit', `Size '${vm.size}' supports up to ${maxDataDisksFor(vm)} data disk(s). Remove ${diskOverflow} disk(s).`);
   }
 
   render();
