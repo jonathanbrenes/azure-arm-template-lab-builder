@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.3] - 2026-02-24
+### Added
+- optional “Add VM filter” popup + active filter chips
+- filter-aware VM size dropdown behavior
+- Added VM size capability metadata and enforcement in `index.html` for `maxNics` and `maxDataDisks`.
+
+### Changed
+- Reduced visual emphasis of the VM filtering UI in `index.html` (smaller fonts/buttons/chips) so it remains clearly optional.
+- Updated size hints in `index.html` to include max NIC and max data disk values when applicable.
+
+### Fixed
+- Prevented ARM JSON generation in `index.html` when VM size attachment limits are violated.
+- Disabled Add NIC/Add disk actions at limit and surfaced limit-specific validation/toast feedback.
+
 ## [1.0.2] - 2026-02-24
 ### Added
 - Added SLES 12 SP5 image mapping support to the image catalog.
