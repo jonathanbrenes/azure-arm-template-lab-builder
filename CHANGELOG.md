@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.2] - 2026-02-24
+### Added
+- Added SLES 12 SP5 image mapping support to the image catalog.
+- Added `urn-to-imageoption.sh` utility script to generate `imageOptions` entries from image URNs.
+
 ## [1.0.1] - 2026-02-24
 ### Fixed
 - Updated VM clone naming behavior to avoid chained names like `vm1-clone-clone`.
