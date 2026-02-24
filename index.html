@@ -709,6 +709,26 @@ const diskSkus = ['StandardSSD_LRS', 'Premium_LRS', 'PremiumV2_LRS', 'Standard_L
     return `vm${n}`;
   }
 
+  function nextCloneVmName(sourceName) {
+    const used = new Set(vms.map(v => String(v.name || '').trim().toLowerCase()).filter(Boolean));
+    let base = String(sourceName || 'vm').trim() || 'vm';
+
+    // Normalize sources like "vm1-clone", "vm1-clone-2", or legacy "vm1-clone-clone".
+    while (/-clone(?:-\d+)?$/i.test(base)) {
+      base = base.replace(/-clone(?:-\d+)?$/i, '');
+    }
+    if (!base) base = 'vm';
+
+    let n = 1;
+    let candidate = `${base}-clone-${n}`;
+    while (used.has(candidate.toLowerCase())) {
+      n += 1;
+      candidate = `${base}-clone-${n}`;
+    }
+
+    return candidate;
+  }
+
   function duplicateVmNamesSet() {
     const counts = new Map();
     vms.forEach(vm => {
@@ -1468,7 +1488,7 @@ let active = 0;
     const clone = {
       ...src,
       id: uid(),
-      name: `${String(src.name || 'vm')}-clone`,
+      name: nextCloneVmName(src.name),
       publisherFilter: String(src.publisherFilter || ''),
       customData: String(src.customData || ''),
       nics: (src.nics || []).map((n, i) => ({
