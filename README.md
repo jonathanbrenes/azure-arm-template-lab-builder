@@ -7,15 +7,22 @@ Web-based ARM template builder for Linux lab environments on Azure.
 - Multi-VM ARM template builder in a single-page UI.
 - Compatibility-aware image filtering by generation, architecture, disk controller, and optional publisher.
 - VM size constraints for generation, controller support, accelerated networking, and disk SKU support.
-- Optional VM size capability filters with add/clear flow and removable active chips.
+- Optional VM size capability filters (9 dimensions) with add/clear flow and removable active chips.
 - Attachment limit enforcement per VM size (`maxNics`, `maxDataDisks`).
 - Validation for VM names, NIC names, data disk sizes/SKUs, and attachment limits.
 - Auto-correction behavior with toast notifications when selections become incompatible.
 - ARM output gating: copy/download/deploy actions are disabled until validation issues are fixed.
-- Deployment helper action (**Copy + Open Portal**) with inline 5-second countdown and guidance.
+- Deployment helper action (**Copy + Portal**) with inline countdown and guidance.
+- **Import JSON**: load a previously generated ARM template to re-populate the tool.
 - VM summary table for quick review of generated configuration.
 - Custom data support with optional reboot behavior.
 - Ultra disk handling with zonal placement and `ultraSSDEnabled` support.
+- **localStorage persistence**: VM configuration, filters, and active tab are saved/restored across page reloads.
+- **Accessibility**: ARIA tablist with arrow-key navigation, focus-trapped filter panel, aria-live size count announcements.
+- **Button groups**: segmented control layout for export and VM actions.
+- Named constants (`LIMITS` object) for all magic numbers.
+- Per-cycle computation caches to avoid redundant work during render.
+- Targeted render helpers to minimize DOM teardown on common interactions.
 - Helper script (`urn-to-imageoption.sh`) to generate `imageOptions` entries from image URNs.
 
 ## Objective
@@ -51,33 +58,56 @@ Quick flow:
 
 ## How It Works
 
-The app is a single file (`index.html`) with three main parts:
+The app is a single HTML file with embedded CSS and JavaScript. Main parts:
 
-1. **Data catalogs**
+1. **Data catalogs** (validated at startup)
 	- `imageOptions`: OS image metadata and compatibility tags
 	- `sizeOptions`: VM SKU capabilities and constraints
 
-2. **UI state model**
+2. **Centralized state** (`state` object)
 	- `vms[]`: in-memory array of VM definitions (size, image, NICs, disks, custom data, etc.)
+	- `sizeFilters`: active filter panel selections
+	- `activeVmIndex`: currently selected VM tab
+	- Per-cycle caches (`_imageCache`, `_dupVmNamesCache`) cleared by `invalidateCycleCaches()`
+	- `globalThis` property accessors (`vms`, `active`, `sizeFilters`) for backward compatibility
+	- `localStorage` persistence via `saveUiState()` / `loadUiState()`
 
-3. **Generator and render pipeline**
+3. **Named constants** (`LIMITS` object, frozen)
+	- `VM_NAME_MAX_LEN`, `AZ_NETWORK_NAME_MAX_LEN`, `DEFAULT_DATA_DISK_GB`, `FALLBACK_MAX_DISK_GB`, `TOAST_DURATION_MS`, `COPY_FEEDBACK_MS`, `DEPLOY_COUNTDOWN_S`
+
+4. **Generator and render pipeline**
 	- User changes fields
 	- `sanitizeAllVms()` normalizes and auto-corrects incompatible settings
 	- `generateArmTemplate(vms)` produces ARM JSON
 	- Output and summary table are refreshed
+	- Full render via `render()` for tab switches, add/remove VM, filter changes
+	- Targeted helpers for common interactions:
+		- `renderVmFormFields(vm)`: update form values without DOM creation
+		- `renderVmSelects(vm)`: repopulate gen/controller/publisher/image dropdowns
+		- `updateNicDiskButtons(vm)`: refresh Add NIC/Add Disk disabled state
+		- `updateNicNameConstraints(vm)`: patch NIC maxLength + errors in-place
+
+5. **Import** (`importFromArmJson()`)
+	- Parses ARM template JSON, matches VM sizes and images to catalogs
+	- Imports NICs (name, accel, publicIp), data disks (size, SKU)
+	- Skips unrecognized VMs with summary toast
+	- Custom data is cleared (encoding can't be reversed)
 
 ---
 
 ## Runtime Flow (High Level)
 
 1. Load catalogs (`imageOptions`, `sizeOptions`)
-2. Validate image catalog uniqueness (`validateImageOptionsConfig`)
-3. Initialize first VM
-4. Render form/tab UI
-5. On each input change:
-	- enforce constraints
+2. Validate catalogs at startup (`validateImageOptionsConfig`, `validateSizeOptionsConfig`)
+3. Restore saved state from localStorage (VMs, filters, active tab)
+4. Initialize default VM if no saved state exists
+5. Render form/tab UI (full `render()` pipeline)
+6. On each input change:
+	- invalidate per-cycle caches
+	- enforce constraints via `sanitizeAllVms()`
 	- optionally show toast messages for auto-fixes
 	- regenerate ARM output
+	- save state to localStorage
 
 ---
 
@@ -179,6 +209,64 @@ Each size contains:
 - Whether Add NIC/Add disk actions are allowed
 - Whether generated output can be copied/downloaded/deployed
 
+### Using `sku-to-sizeoption.sh`
+
+Size entries can be generated from Azure CLI metadata using the helper script.
+
+- Script: `sku-to-sizeoption.sh`
+- Input: VM SKU name (for example `Standard_D2ps_v5`)
+- Optional second argument: Azure region (default: `eastus`)
+
+Requirements to run the script:
+
+- Bash shell environment (Linux, macOS, or WSL/Git Bash on Windows)
+- Azure CLI installed (`az`)
+- Authenticated Azure session (`az login`)
+- Permissions to query VM SKU capabilities in the selected subscription/region
+
+Example:
+
+```bash
+./sku-to-sizeoption.sh Standard_D2ps_v5 eastus
+```
+
+Example output:
+
+```text
+  {
+    name: 'Standard_D2ps_v5',
+    tags: {
+      architectures: ['Arm64'],
+      generations: ['Gen2'],
+      diskControllersByGen: {
+        Gen2: ['SCSI']
+      },
+      diskSkuSupport: {
+        Standard_LRS: true,
+        StandardSSD_LRS: true,
+        Premium_LRS: true,
+        PremiumV2_LRS: false,
+        UltraSSD_LRS: true
+      },
+      accelNetMode: 'optional',
+      ephemeralOsDiskSupported: false,
+      maxNics: 2,
+      maxDataDisks: 8
+    }
+  },
+```
+
+What it does:
+
+- Queries `az vm list-skus` for the given SKU in the specified region.
+- Reads capabilities: architecture, HyperV generations, disk controller types, accelerated networking, Premium/PremiumV2/Ultra disk support, ephemeral OS disk support, max NICs, and max data disks.
+- Infers generation-specific disk controller mapping (Gen1 → SCSI only; Gen2 → SCSI + NVMe if NVMe capability exists).
+- Emits `accelNetMode` as `optional` or `unsupported`. If the size requires accelerated networking, adjust to `required` manually after generation.
+- If `PremiumV2Supported` is not explicitly reported, a heuristic infers it from Premium IO + NVMe + Gen2.
+- Output is formatted to match the indentation style used in `sizeOptions`.
+
+Copy the emitted object and paste it into the appropriate family section in `sizeOptions`.
+
 ---
 
 ## VM Size Filtering UX
@@ -207,15 +295,30 @@ When limits are hit:
 
 ---
 
-## Deployment Assist (Copy + Open Portal)
+## Deployment Assist (Copy + Portal)
 
-- Output actions include **Copy**, **Copy + Open Portal**, and **Download**.
-- **Copy + Open Portal** does the following:
+- Export actions are grouped in a segmented button bar: **Copy** | **Copy + Portal** | **Download**, separated by a divider from **Import JSON**.
+- **Copy + Portal** does the following:
 	1. Copies ARM JSON to clipboard
 	2. Shows an inline warning/countdown near action buttons
-	3. Waits 5 seconds
+	3. Waits `LIMITS.DEPLOY_COUNTDOWN_S` seconds (default 5)
 	4. Opens Azure custom template page: `https://portal.azure.com/#create/Microsoft.Template`
 - Warning text reminds users to allow pop-up windows if the portal does not open.
+
+---
+
+## Import JSON
+
+- Click **Import JSON** to load a previously generated (or compatible) ARM template.
+- The import parser (`importFromArmJson()`):
+	- Extracts `Microsoft.Compute/virtualMachines` resources
+	- Matches `vmSize` to `sizeOptions` catalog (case-insensitive)
+	- Matches `imageReference` (publisher + offer + sku) to `imageOptions` catalog (case-insensitive)
+	- Imports NICs: derives short name from full resource name, detects public IP and accelerated networking
+	- Imports data disks: size and SKU (validated against `maxDiskSizeGbBySku`)
+	- Clears custom data (encoding can't be reliably reversed)
+- VMs whose size or image is not in the catalog are skipped.
+- A summary toast reports imported count, skipped VMs, and custom data status.
 
 ---
 
@@ -235,6 +338,24 @@ When limits are hit:
 
 ---
 
+## Accessibility
+
+- **VM tab bar**: `role="tablist"` + `role="tab"` + `aria-selected`, with arrow-key navigation (Left/Right/Home/End).
+- **Filter panel**: `role="dialog"` + `aria-modal="true"`, focus-trapped (Tab cycles inside), Escape to close and return focus.
+- **Filter results**: `aria-live` region (`#sizeFilterLive`) announces matching size count when filters change.
+- **Screen-reader-only** content uses `.sr-only` CSS class.
+
+---
+
+## State Persistence
+
+- VM configuration, size filters, and active tab index are auto-saved to `localStorage` under key `armBuilderUiStateV1`.
+- State is restored on page load via `loadUiState()`.
+- Saved after every change via `saveUiState()` (called from `updateOutput()`).
+- If localStorage is unavailable or corrupted, the app starts with defaults.
+
+---
+
 ## Maintenance Guide
 
 When changing this project:
@@ -242,7 +363,8 @@ When changing this project:
 1. Update catalogs first (`imageOptions`, `sizeOptions`).
 2. Keep keys stable unless migration is intentional.
 3. Ensure no duplicate image `key` or `ref` values.
-4. Verify these scenarios manually:
+4. After adding new images/sizes, page load validation will catch config errors.
+5. Verify these scenarios manually:
 	- size change causes image/controller auto-correction
 	- filter chips and no-match state behave correctly
 	- size hints hide/show correctly when filters exclude the current size
@@ -250,7 +372,10 @@ When changing this project:
 	- duplicate VM names are blocked
 	- NIC/data disk limits enforce correctly for each size
 	- disk SKU coercion works after size changes
-	- Copy + Open Portal shows warning/countdown and opens Azure portal (or shows clear pop-up guidance)
+	- Copy + Portal shows warning/countdown and opens Azure portal (or shows clear pop-up guidance)
+	- Import JSON loads valid templates and reports skipped VMs
+	- localStorage persistence survives page reload
+	- arrow-key tab navigation and filter panel focus trap work correctly
 	- generated ARM validates in portal/CLI
 
 ---
@@ -260,4 +385,6 @@ When changing this project:
 Current design is intentionally simple and portable:
 
 - `index.html` — UI, data catalogs, state management, and ARM generation logic
-- `urn-to-imageoption.sh` — helper script to generate and validate `imageOptions` entries from Azure image URNs
+- `urn-to-imageoption.sh` — helper script to generate `imageOptions` entries from Azure image URNs
+- `sku-to-sizeoption.sh` — helper script to generate `sizeOptions` entries from Azure VM SKU names
+- `README.md` — this file
