@@ -1,155 +1,53 @@
-# Linux ARM Template UI
+# Changelog
 
-Web-based ARM template builder for Linux lab environments on Azure.
+All notable changes to this project are documented in this file.
 
-## Objective
+## [1.0.4] - 2026-02-24
+### Added
+- Added a new `Copy + Open Portal` action button next to Copy/Download in the JSON output actions.
+- Added deployment-assist flow to copy ARM JSON, show an inline warning countdown, wait 5 seconds, and open `https://portal.azure.com/#create/Microsoft.Template`.
 
-This project provides a single-page HTML tool to build ARM templates for **multi-VM Linux labs** while enforcing compatibility rules between:
+### Changed
+- Updated deploy warning text to include explicit guidance to allow pop-up windows if the portal does not open.
+- Standardized deploy-flow behavior and messaging across `index.html` and `arm builder.html`.
 
-- VM size
-- VM generation (Gen1/Gen2)
-- CPU architecture (x64/Arm64)
-- Disk controller (SCSI/NVMe)
-- Disk SKU support (Standard/Premium/PremiumV2/Ultra)
-- OS image references
+## [1.0.3] - 2026-02-24
+### Added
+- optional “Add VM filter” popup + active filter chips
+- filter-aware VM size dropdown behavior
+- Added VM size capability metadata and enforcement in `index.html` for `maxNics` and `maxDataDisks`.
 
-The goal is to reduce deployment errors by preventing invalid combinations in the UI before template deployment.
+### Changed
+- Reduced visual emphasis of the VM filtering UI in `index.html` (smaller fonts/buttons/chips) so it remains clearly optional.
+- Updated size hints in `index.html` to include max NIC and max data disk values when applicable.
 
----
+### Fixed
+- Prevented ARM JSON generation in `index.html` when VM size attachment limits are violated.
+- Disabled Add NIC/Add disk actions at limit and surfaced limit-specific validation/toast feedback.
 
-## How It Works
+## [1.0.2] - 2026-02-24
+### Added
+- Added SLES 12 SP5 image mapping support to the image catalog.
+- Added `urn-to-imageoption.sh` utility script to generate `imageOptions` entries from image URNs.
 
-The app is a single file (`index.html`) with three main parts:
+## [1.0.1] - 2026-02-24
+### Fixed
+- Updated VM clone naming behavior to avoid chained names like `vm1-clone-clone`.
+- Clone names now use incremental numbering from the base VM name:
+  - `vm1-clone-1`
+  - `vm1-clone-2`
+  - `vm1-clone-3`
+- Added normalization so cloning works consistently even when the source VM already has a clone-style name.
 
-1. **Data catalogs**
-	- `imageOptions`: OS image metadata and compatibility tags
-	- `sizeOptions`: VM SKU capabilities and constraints
-
-2. **UI state model**
-	- `vms[]`: in-memory array of VM definitions (size, image, NICs, disks, custom data, etc.)
-
-3. **Generator and render pipeline**
-	- User changes fields
-	- `sanitizeAllVms()` normalizes and auto-corrects incompatible settings
-	- `generateArmTemplate(vms)` produces ARM JSON
-	- Output and summary table are refreshed
-
----
-
-## Runtime Flow (High Level)
-
-1. Load catalogs (`imageOptions`, `sizeOptions`)
-2. Validate image catalog uniqueness (`validateImageOptionsConfig`)
-3. Initialize first VM
-4. Render form/tab UI
-5. On each input change:
-	- enforce constraints
-	- optionally show toast messages for auto-fixes
-	- regenerate ARM output
-
----
-
-## How OS Images Are Built (`imageOptions`)
-
-Each entry has:
-
-- `key`: unique identifier used by the UI
-- `arch`: `x64` or `Arm64`
-- `gen`: `Gen1` or `Gen2`
-- `nvmeCapable` / `scsiCapable`: controller compatibility tags
-- `label`: UI display string
-- `ref`: ARM image reference
-  - `publisher`
-  - `offer`
-  - `sku`
-  - `version`
-
-### Key rules
-
-- Entries are grouped by publisher (`RedHat`, `Canonical`, `SUSE`) and sorted by `key`.
-- `key` must be unique.
-- `ref` (`publisher:offer:sku:version`) must be unique.
-- Filtering is done by **generation + architecture + controller (+ optional publisher)**.
-
-### Typical source of truth
-
-Image entries are intended to be generated/validated using Azure CLI metadata scripts and then pasted into `imageOptions`.
-
----
-
-## How VM Sizes Are Built (`sizeOptions`)
-
-Each size contains:
-
-- `name`: Azure VM SKU (for example `Standard_D4s_v5`)
-- `tags.architectures`: supported CPU architectures
-- `tags.generations`: supported VM generations
-- `tags.diskControllersByGen`: allowed controllers per generation
-- `tags.diskSkuSupport`: disk SKU capability map
-- `tags.accelNetMode`: `required`, `optional`, or `unsupported`
-
-### What this controls in the UI
-
-- Which generations are selectable
-- Which disk controllers are selectable
-- Which OS images are shown
-- Which disk SKUs are allowed for data disks
-- Whether NIC accelerated networking is forced, optional, or disabled
-
----
-
-## Custom Data Behavior
-
-- Custom data text is base64-encoded directly for ARM `osProfile.customData`.
-- Optional checkbox: **Reboot required after deployment**
-  - when enabled, appends `sleep 60 && reboot &` to custom data payload.
-
----
-
-## Ultra Disk Behavior
-
-- If any VM includes a data disk with `UltraSSD_LRS`:
-  - `additionalCapabilities.ultraSSDEnabled` is set on that VM
-  - a zonal placement parameter is used and VM/PIP are aligned to the selected zone.
-
----
-
-## Maintenance Guide
-
-When changing this project:
-
-1. Update catalogs first (`imageOptions`, `sizeOptions`).
-2. Keep keys stable unless migration is intentional.
-3. Ensure no duplicate image `key` or `ref` values.
-4. Verify these scenarios manually:
-	- size change causes image/controller auto-correction
-	- publisher filter updates image list correctly
-	- duplicate VM names are blocked
-	- disk SKU coercion works after size changes
-	- generated ARM validates in portal/CLI
-
----
-
-## Recommended Enhancements (Future)
-
-- Add unit tests for catalog validation and filtering rules.
-- Add export/import of VM configurations.
-- Add CI check to detect duplicate image keys/refs before merge.
-- Add optional pipeline publishing (GitHub Pages / Azure Static Website).
-
----
-
-## Project Structure
-
-Current design is intentionally single-file for portability:
-
-- `index.html` — UI, data catalogs, state management, and ARM generation logic
-
-If this grows significantly, consider splitting into:
-
-- `data.images.js`
-- `data.sizes.js`
-- `generator.js`
-- `ui.js`
-
-while preserving the same behavior.
+## [1.0.0] - 2026-02-24
+### Added
+- Initial public upload of the Linux ARM Template UI.
+- Single-file web app to build multi-VM ARM templates.
+- VM configuration UI for:
+  - VM size, generation, publisher, OS image, disk controller
+  - NICs and public IP settings
+  - Data disks and SKU selection
+  - Optional custom data and reboot flag
+- ARM JSON generation with copy/download actions.
+- Compatibility enforcement and validation across image/size/controller constraints.
+- Summary view and help guidance in the UI.
