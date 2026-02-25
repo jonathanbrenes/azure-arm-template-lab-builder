@@ -213,25 +213,31 @@ emit_entry() {
   local label="${display_name} (${GEN}) (${PUBLISHER}:${OFFER}:${SKU}:${label_version})"
 
   cat <<EOF
-{ key: '$key', arch: '$ARCH', gen: '$GEN', nvmeCapable: $NVME, scsiCapable: $SCSI,
-  label: '$label',
-  ref: { publisher:'$PUBLISHER', offer:'$OFFER', sku:'$SKU', version:'$ref_version' } },
+    { key: '$key', arch: '$ARCH', gen: '$GEN', nvmeCapable: $NVME, scsiCapable: $SCSI,
+      label: '$label',
+      ref: { publisher:'$PUBLISHER', offer:'$OFFER', sku:'$SKU', version:'$ref_version' } },
 EOF
 }
 
 # ------------------------------
 # 6) Emit imageOptions entry
 # ------------------------------
+emit_pinned_entry_for_version() {
+  local version="$1"
+  local version_key_part
+  version_key_part="$(make_key_part "$version")"
+  emit_entry "${KEY}_${version_key_part}" "$version" "$version"
+}
+
 if [[ "$INPUT_VERSION" == "latest" ]]; then
   # Option 1: Keep ARM ref pinned to latest.
   echo "// Option A: floating latest reference (ref.version='latest')."
   emit_entry "${KEY}_latest" "latest" "latest"
 
   # Option 2: Pin ARM ref to the currently resolved latest version.
-  VERSION_KEY_PART="$(make_key_part "$VERSION")"
   echo "// Option B: pinned reference to current latest resolved version (ref.version='${VERSION}')."
-  emit_entry "${KEY}_${VERSION_KEY_PART}" "$VERSION" "$VERSION"
+  emit_pinned_entry_for_version "$VERSION"
 else
   echo "// Single option: explicit version reference (ref.version='${VERSION}')."
-  emit_entry "$KEY" "$VERSION" "$VERSION"
+  emit_pinned_entry_for_version "$VERSION"
 fi
