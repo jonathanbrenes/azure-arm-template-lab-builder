@@ -2,14 +2,21 @@
 
 Web-based ARM template builder for Linux lab environments on Azure.
 
-## Recent Feature Additions
+## Features
 
-- Optional VM size filtering UI (add/clear filters + active chips).
-- Filter-aware VM size picker with explicit no-match messaging.
-- VM size attachment limits enforced in UI (`maxNics`, `maxDataDisks`).
-- Output gating when validation fails (name, disk, or attachment-limit errors).
-- New **Copy + Open Portal** action with inline 5-second warning countdown.
-- Deploy warning now includes pop-up allowance guidance when browsers block portal opening.
+- Multi-VM ARM template builder in a single-page UI.
+- Compatibility-aware image filtering by generation, architecture, disk controller, and optional publisher.
+- VM size constraints for generation, controller support, accelerated networking, and disk SKU support.
+- Optional VM size capability filters with add/clear flow and removable active chips.
+- Attachment limit enforcement per VM size (`maxNics`, `maxDataDisks`).
+- Validation for VM names, NIC names, data disk sizes/SKUs, and attachment limits.
+- Auto-correction behavior with toast notifications when selections become incompatible.
+- ARM output gating: copy/download/deploy actions are disabled until validation issues are fixed.
+- Deployment helper action (**Copy + Open Portal**) with inline 5-second countdown and guidance.
+- VM summary table for quick review of generated configuration.
+- Custom data support with optional reboot behavior.
+- Ultra disk handling with zonal placement and `ultraSSDEnabled` support.
+- Helper script (`urn-to-imageoption.sh`) to generate `imageOptions` entries from image URNs.
 
 ## Objective
 
@@ -24,6 +31,21 @@ This project provides a single-page HTML tool to build ARM templates for **multi
 - VM attachment limits (NIC and data disk counts)
 
 The goal is to reduce deployment errors by preventing invalid combinations in the UI before template deployment.
+
+---
+
+## Use the hosted app
+
+You can use the builder directly in your browser:
+
+https://jonathanbrenes.github.io/azure-arm-template-lab-builder/
+
+Quick flow:
+
+1. Open the URL.
+2. Add one or more VMs and configure size/image/network/disks.
+3. Review the generated ARM JSON and VM summary.
+4. Use **Copy**, **Copy + Open Portal**, or **Download**.
 
 ---
 
@@ -76,14 +98,61 @@ Each entry has:
 
 ### Key rules
 
-- Entries are grouped by publisher (`RedHat`, `Canonical`, `SUSE`) and sorted by `key`.
+- Entries are grouped by publisher and sorted by `key`.
 - `key` must be unique.
 - `ref` (`publisher:offer:sku:version`) must be unique.
 - Filtering is done by **generation + architecture + controller (+ optional publisher)**.
 
-### Typical source of truth
+### Using `urn-to-imageoption.sh`
 
 Image entries are intended to be generated/validated using Azure CLI metadata scripts and then pasted into `imageOptions`.
+
+You can generate ready-to-paste `imageOptions` entries with the helper script:
+
+- Script: `urn-to-imageoption.sh`
+- Input: `publisher:offer:sku:version`
+- Optional second argument: Azure region (default: `eastus`)
+
+Requirements to run the script:
+
+- Bash shell environment (Linux, macOS, or WSL/Git Bash on Windows)
+- Azure CLI installed (`az`)
+- Authenticated Azure session (`az login`)
+- Permissions to query marketplace images in the selected subscription/region
+
+Example:
+
+```bash
+./urn-to-imageoption.sh "Debian:debian-12:12-arm64:latest" eastus
+```
+
+Example output for Debian 13 Gen2:
+
+```text
+urn-to-imageoption.sh Debian:debian-13:13-gen2:latest
+// Option A: floating latest reference (ref.version='latest').
+		{ key: 'debian_13_13_gen2_x64_gen2_latest', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+			label: 'Debian 13 x86_64 (Gen2) (Debian:debian-13:13-gen2:latest)',
+			ref: { publisher:'Debian', offer:'debian-13', sku:'13-gen2', version:'latest' } },
+// Option B: pinned reference to current latest resolved version (ref.version='0.20260220.2394').
+		{ key: 'debian_13_13_gen2_x64_gen2_0_20260220_2394', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
+			label: 'Debian 13 x86_64 (Gen2) (Debian:debian-13:13-gen2:0.20260220.2394)',
+			ref: { publisher:'Debian', offer:'debian-13', sku:'13-gen2', version:'0.20260220.2394' } },
+```
+
+What it does:
+
+- Resolves `latest` to a concrete version for metadata lookup.
+- Reads image capabilities from Azure (`architecture`, `hyperVGeneration`, `DiskControllerTypes`).
+- Produces a normalized `key`, `label`, and `ref` block in the same object format used by `imageOptions`.
+- Emits output already formatted to match the indentation style used in `index.html`.
+
+When `version=latest`, the script emits:
+
+- **Option A**: floating reference (`ref.version='latest'`)
+- **Option B**: pinned reference to the currently resolved latest version
+
+Copy the desired emitted object and paste it into the appropriate publisher section in `imageOptions`.
 
 ---
 
@@ -186,26 +255,9 @@ When changing this project:
 
 ---
 
-## Recommended Enhancements (Future)
-
-- Add unit tests for catalog validation and filtering rules.
-- Add export/import of VM configurations.
-- Add CI check to detect duplicate image keys/refs before merge.
-- Add optional pipeline publishing (GitHub Pages / Azure Static Website).
-
----
-
 ## Project Structure
 
-Current design is intentionally single-file for portability:
+Current design is intentionally simple and portable:
 
 - `index.html` — UI, data catalogs, state management, and ARM generation logic
-
-If this grows significantly, consider splitting into:
-
-- `data.images.js`
-- `data.sizes.js`
-- `generator.js`
-- `ui.js`
-
-while preserving the same behavior.
+- `urn-to-imageoption.sh` — helper script to generate and validate `imageOptions` entries from Azure image URNs
