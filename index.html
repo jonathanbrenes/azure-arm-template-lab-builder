@@ -29,6 +29,7 @@
     .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .title { font-size: 16px; font-weight: 900; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    #outputActions { position: relative; }
 
     button { border: 1px solid var(--border); background: #fff; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-weight: 800; }
     button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
@@ -102,6 +103,11 @@
  .toast.show {opacity: 1; transform: translateY(0);}
  .toast .title {font-size: 13px; font-weight: 900; margin-bottom: 2px;}
  .toast .msg {color: #e5e7eb;}
+
+ .deploy-flow-inline {position: absolute; top: calc(100% + 8px); right: 0; width: min(560px, 92vw); display: none; padding: 8px 10px; border-radius: 8px; border: 1px solid #f3d08b; background: #fff7e6; color: #3f3f46; font-size: 12px; line-height: 1.35; box-shadow: 0 10px 24px rgba(0,0,0,0.14); z-index: 10001; pointer-events: none;}
+ .deploy-flow-inline.show {display: block;}
+ .deploy-flow-inline .title {font-size: 12px; font-weight: 900; margin-bottom: 2px; color: #201f1e;}
+ .deploy-flow-inline .msg {color: #3f3f46;}
 
  .size-filter-wrap { position: relative; font-size: 12px; }
  .size-filter-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between; }
@@ -250,9 +256,14 @@
       <div class="card">
         <div class="row">
           <div class="title">Generated ARM JSON</div>
-          <div class="actions">
+          <div class="actions" id="outputActions">
             <button id="copyBtn">Copy</button>
+            <button id="deployPortalBtn">Copy + Open Portal</button>
             <button class="primary" id="downloadBtn">Download</button>
+            <div id="deployFlowInline" class="deploy-flow-inline" aria-live="polite" aria-atomic="true">
+              <div class="title" id="deployFlowInlineTitle"></div>
+              <div class="msg" id="deployFlowInlineMsg"></div>
+            </div>
           </div>
         </div>
         <div class="hint" style="margin: 10px 0 10px;">
@@ -324,6 +335,8 @@
 // UI feedback helper (small transient notifications for auto-fixes)
 // ---------------------------------------------------------------------------
 let toastTimer = null;
+let deployFlowTimer = null;
+let deployFlowTickTimer = null;
 function showToast(title, msg) {
   const t = document.getElementById('toast');
   const tt = document.getElementById('toastTitle');
@@ -334,6 +347,38 @@ function showToast(title, msg) {
   t.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function showDeployFlow(msg, seconds) {
+  const panel = document.getElementById('deployFlowInline');
+  const title = document.getElementById('deployFlowInlineTitle');
+  const body = document.getElementById('deployFlowInlineMsg');
+  if (!panel || !title || !body) return;
+
+  let remaining = Math.max(1, Number(seconds || 5));
+  title.textContent = `Warning: opening Azure portal in ${remaining}s`;
+  body.textContent = msg || '';
+  panel.classList.add('show');
+
+  if (deployFlowTickTimer) clearInterval(deployFlowTickTimer);
+  deployFlowTickTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(deployFlowTickTimer);
+      deployFlowTickTimer = null;
+      return;
+    }
+    title.textContent = `Warning: opening Azure portal in ${remaining}s`;
+  }, 1000);
+
+  if (deployFlowTimer) clearTimeout(deployFlowTimer);
+  deployFlowTimer = setTimeout(() => {
+    panel.classList.remove('show');
+    if (deployFlowTickTimer) {
+      clearInterval(deployFlowTickTimer);
+      deployFlowTickTimer = null;
+    }
+  }, remaining * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -1816,6 +1861,7 @@ let active = 0;
     const hasValidationErrors = hasVmNameErrors || hasNicNameErrors || hasDiskErrors || hasAttachmentErrors;
 
     $('copyBtn').disabled = hasValidationErrors;
+    $('deployPortalBtn').disabled = hasValidationErrors;
     $('downloadBtn').disabled = hasValidationErrors;
     if (hasValidationErrors) {
       if (hasAttachmentErrors) {
@@ -2133,6 +2179,33 @@ let active = 0;
       setTimeout(() => $('copyBtn').textContent = 'Copy', 900);
     } catch (e) {
       alert('Clipboard copy failed. You can manually copy from the textarea.');
+    }
+  };
+
+  $('deployPortalBtn').onclick = async () => {
+    try {
+      await navigator.clipboard.writeText($('output').value);
+      const url = 'https://portal.azure.com/#create/Microsoft.Template';
+
+      const btn = $('deployPortalBtn');
+      const originalText = btn ? btn.textContent : 'Copy + Open Portal';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Opening in 5s...';
+      }
+
+      showDeployFlow('ARM JSON copied to clipboard. In Custom deployment, choose "Build your own template in the editor", then paste the JSON from clipboard. If the portal does not open, allow pop-up windows for this page.', 5);
+
+      setTimeout(() => {
+        window.open(url, '_blank', 'noopener');
+        if (btn) {
+          btn.textContent = originalText;
+          btn.disabled = false;
+        }
+      }, 5000);
+    } catch (e) {
+      alert('Unable to copy JSON and open Azure portal automatically. Please copy manually, then open https://portal.azure.com/#create/Microsoft.Template');
     }
   };
 
