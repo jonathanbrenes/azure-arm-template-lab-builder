@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.4] - 2026-02-24
+### Added
+- Added a new `Copy + Open Portal` action button next to Copy/Download in the JSON output actions.
+- Added deployment-assist flow to copy ARM JSON, show an inline warning countdown, wait 5 seconds, and open `https://portal.azure.com/#create/Microsoft.Template`.
+
+### Changed
+- Updated deploy warning text to include explicit guidance to allow pop-up windows if the portal does not open.
+- Standardized deploy-flow behavior and messaging across `index.html` and `arm builder.html`.
+
 ## [1.0.3] - 2026-02-24
 ### Added
 - optional “Add VM filter” popup + active filter chips
