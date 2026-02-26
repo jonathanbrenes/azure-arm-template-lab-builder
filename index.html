@@ -19,7 +19,7 @@
       --sans: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: var(--sans); color: var(--text); background: var(--bg); }
+    body { margin: 0; font-family: var(--sans); color: var(--text); background: var(--bg); overflow-y: scroll; }
     header { background: var(--headerBg); color: var(--headerText); padding: 12px 16px; font-weight: 800; box-shadow: inset 0 -1px 0 rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .container { padding: 16px; max-width: 1500px; margin: 0 auto; }
     .hint { color: var(--muted); margin: 8px 0 16px; font-size: 14px; }
@@ -134,12 +134,34 @@
  .size-filter-panel-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
  .size-filter-panel-actions button { font-size: 12px; font-weight: 700; padding: 6px 9px; }
  .size-filter-panel-title { font-weight: 700; font-size: 12px; margin-bottom: 8px; color: var(--muted); }
+
+    .extra-options-entry { display: inline-flex; align-items: center; gap: 8px; }
+    .extra-options-label { font-size: 11px; font-weight: 900; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    #toggleExtraOptionsBtn { border-color: rgba(255,255,255,0.45); background: rgba(255,255,255,0.14); color: #fff; }
+    #toggleExtraOptionsBtn:hover { background: rgba(255,255,255,0.22); }
+    #toggleExtraOptionsBtn[aria-expanded="true"] { border-color: #ffffff; background: rgba(255,255,255,0.30); color: #fff; }
+
+    .extra-options-flow {
+      position: fixed;
+      top: 92px;
+      right: 16px;
+      width: min(1100px, calc(100vw - 40px));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+      padding: 12px;
+      z-index: 90;
+      max-height: calc(100vh - 96px);
+      overflow: auto;
+    }
 </style>
 </head>
 <body>
   <header>
-    <div>Linux - ARM Template UI</div>
+    <div>Linux ARM Template UI</div>
     <div class="help-wrap">
+      <button id="toggleExtraOptionsBtn" type="button" aria-controls="extraOptionsPanel" aria-expanded="false">Extra options</button>
       <button id="helpBtn" type="button">Help</button>
       <div id="helpBalloon" class="help-balloon" role="dialog" aria-label="Help" aria-hidden="true">
         <h4>How this template builder works</h4>
@@ -151,7 +173,8 @@
           <li><strong>Data disks:</strong> SKU options are restricted to SKUs supported by the selected VM size. Disk size limits are enforced per SKU.</li>
           <li><strong>Validation:</strong> VM names and NIC names must be valid, unique, and within Azure resource name length limits before JSON can be exported.</li>
           <li><strong>Output:</strong> Generated ARM includes a shared VNet/subnet/NSG, plus per-VM NICs, optional public IPs, and VM resources. Ultra SSD disks trigger zonal placement.</li>
-          <li><strong>Custom data:</strong> Optional. When present, it is directly base64-encoded into ARM customData.</li>
+          <li><strong>Optional storage:</strong> You can optionally add SMB and/or NFS Azure Files resources. If enabled, the template adds storage accounts, shares, private endpoints, and outputs for mount paths.</li>
+          <li><strong>Custom data:</strong> Optional. When present, it is directly base64-encoded in ARM.</li>
           <li><strong>Import JSON:</strong> Import a previously generated (or compatible) ARM template to re-populate the tool. VMs whose size or image is not in the catalog are skipped with a summary toast. Custom data cannot be reverse-decoded and is cleared on import.</li>
           <li><strong>Persistence:</strong> Your VM configuration and active filters are auto-saved to localStorage and restored on page reload.</li>
           <li><strong>Keyboard:</strong> VM tabs support arrow-key navigation. The filter panel traps focus and closes with Escape. Screen reader announcements report filter result counts.</li>
@@ -161,18 +184,52 @@
   </header>
 
   <div class="container">
+    <div class="extra-options-flow" id="extraOptionsPanel" style="display: none;">
+      <div class="row" style="margin-bottom: 8px;">
+        <strong>Storage accounts</strong>
+        <span class="pill warn">Optional</span>
+      </div>
+      <div class="form two" style="padding-top: 0; gap: 12px;">
+        <div>
+          <div class="toggle" style="margin-bottom: 8px;">
+            <input id="enableSmbStorage" type="checkbox" />
+            <span class="muted" style="margin-top: 0;">Add SMB storage account + share</span>
+          </div>
+          <div id="smbShareFieldWrap" style="display: none;">
+            <label for="smbShareName">SMB share name</label>
+            <input id="smbShareName" placeholder="smbshare" maxlength="63" />
+            <div id="smbShareNameError" class="error-text"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="toggle" style="margin-bottom: 8px;">
+            <input id="enableNfsStorage" type="checkbox" />
+            <span class="muted" style="margin-top: 0;">Add NFS storage account + share</span>
+          </div>
+          <div id="nfsShareFieldWrap" style="display: none;">
+            <label for="nfsShareName">NFS share name</label>
+            <input id="nfsShareName" placeholder="nfsshare" maxlength="63" />
+            <div id="nfsShareNameError" class="error-text"></div>
+          </div>
+        </div>
+      </div>
+      <div class="muted">Storage account names are auto-generated with <code class="inline">uniqueString()</code>. Only selected protocols are added to the ARM output.</div>
+    </div>
+
     <div class="grid">
-      <!-- Left -->
-      <div class="card">
+      <!-- VMs -->
+      <div class="card vm-card">
         <div class="row">
           <div class="title">VMs</div>
-          <div class="actions">
-            <div class="btn-group">
-              <button class="primary" id="addVmBtn">Add VM</button>
-              <button id="cloneVmBtn">Clone VM</button>
-            </div>
-            <button class="danger" id="removeVmBtn">Remove VM</button>
+        </div>
+
+        <div class="actions" id="vmActions" style="margin-top: 8px;">
+          <div class="btn-group">
+            <button class="primary" id="addVmBtn">Add VM</button>
+            <button id="cloneVmBtn">Clone VM</button>
           </div>
+          <button class="danger" id="removeVmBtn" style="margin-left: auto;">Remove VM</button>
         </div>
 
         <div class="tabs" id="tabs" role="tablist" aria-label="VM tabs"></div>
@@ -270,22 +327,20 @@
       </div>
 
       <!-- Right -->
-      <div class="card">
-        <div class="row">
-          <div class="title">Generated ARM JSON</div>
-          <div class="actions" id="outputActions">
-            <div class="btn-group">
-              <button id="copyBtn">Copy</button>
-              <button id="deployPortalBtn">Copy + Portal</button>
-              <button class="primary" id="downloadBtn">Download</button>
-            </div>
-            <div class="btn-divider"></div>
-            <button id="importBtn" title="Import an ARM template JSON to populate the tool">Import JSON</button>
-            <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;" />
-            <div id="deployFlowInline" class="deploy-flow-inline" aria-live="polite" aria-atomic="true">
-              <div class="title" id="deployFlowInlineTitle"></div>
-              <div class="msg" id="deployFlowInlineMsg"></div>
-            </div>
+      <div class="card json-card">
+        <div class="title">Generated ARM JSON</div>
+        <div class="actions" id="outputActions" style="margin-top: 8px;">
+          <div class="btn-group">
+            <button id="copyBtn">Copy</button>
+            <button id="deployPortalBtn">Copy + Portal</button>
+            <button class="primary" id="downloadBtn">Download</button>
+          </div>
+          <div class="btn-divider" style="margin-left: auto;"></div>
+          <button id="importBtn" title="Import an ARM template JSON to populate the tool">Import JSON</button>
+          <input type="file" id="importFileInput" accept=".json,application/json" style="display:none;" />
+          <div id="deployFlowInline" class="deploy-flow-inline" aria-live="polite" aria-atomic="true">
+            <div class="title" id="deployFlowInlineTitle"></div>
+            <div class="msg" id="deployFlowInlineMsg"></div>
           </div>
         </div>
         <div class="hint" style="margin: 10px 0 10px;">
@@ -297,6 +352,11 @@
         <div class="section" style="margin-top: 10px;">
           <h3>VM Configuration Summary</h3>
           <div id="vmSummary" class="box"></div>
+        </div>
+
+        <div class="section" style="margin-top: 10px;" id="storageSummarySection">
+          <h3>Storage Configuration Summary</h3>
+          <div id="storageSummary" class="box"></div>
         </div>
       </div>
     </div>
@@ -344,7 +404,7 @@
    * Import
    *   - importFromArmJson() parses an ARM template, matches VM sizes and images
    *     to the catalogs, and builds VM models. Unrecognized sizes/images are
-   *     skipped. Custom data is cleared on import.
+  *     skipped. Custom data is cleared on import.
    *
    * Accessibility
    *   - VM tab bar: role="tablist" + role="tab" + aria-selected + arrow keys.
@@ -412,6 +472,8 @@ const state = {
     deployFlowTick: null
   },
   sizeFilters: null,
+  storageOptions: null,
+  extraOptionsOpen: false,
   vms: null,
   activeVmIndex: 0,
   // Per-cycle caches (invalidated at the start of each render/updateOutput cycle)
@@ -809,7 +871,7 @@ function showDeployFlow(msg, seconds) {
       architectures: ['x64'],
       generations: ['Gen2'],
       diskControllersByGen: {
-        Gen2: ['SCSI','NVMe']
+        Gen2: ['NVMe']
       },
       diskSkuSupport: {
         Standard_LRS: true,
@@ -1058,6 +1120,72 @@ state.sizeFilters = {
   minNics: '',
   minDataDisks: ''
 };
+
+function defaultStorageOptions() {
+  return {
+    smbEnabled: false,
+    nfsEnabled: false,
+    smbShareName: 'smbshare',
+    nfsShareName: 'nfsshare'
+  };
+}
+
+function normalizeShareName(name, fallback) {
+  let value = String(name || '').trim().toLowerCase();
+  value = value.replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+  if (!value) value = String(fallback || 'share');
+  if (value.length < 3) value = (value + '---').slice(0, 3);
+  if (value.length > 63) value = value.slice(0, 63).replace(/-+$/g, '');
+  if (!value) value = String(fallback || 'share');
+  return value;
+}
+
+function normalizeStorageOptions(raw) {
+  const next = defaultStorageOptions();
+  if (!raw || typeof raw !== 'object') return next;
+
+  // Backward compatibility: previous UI had a top-level enabled toggle.
+  // If it was explicitly disabled and per-protocol toggles are not provided,
+  // keep both protocols off.
+  const legacyEnabled = (raw.enabled !== undefined) ? !!raw.enabled : undefined;
+
+  if (raw.smbEnabled !== undefined) next.smbEnabled = !!raw.smbEnabled;
+  if (raw.nfsEnabled !== undefined) next.nfsEnabled = !!raw.nfsEnabled;
+
+  if (legacyEnabled === false && raw.smbEnabled === undefined && raw.nfsEnabled === undefined) {
+    next.smbEnabled = false;
+    next.nfsEnabled = false;
+  }
+
+  if (raw.smbShareName !== undefined) next.smbShareName = String(raw.smbShareName);
+  if (raw.nfsShareName !== undefined) next.nfsShareName = String(raw.nfsShareName);
+  return next;
+}
+
+function storageShareNameError(name, label) {
+  const raw = String(name || '').trim();
+  if (!raw) return `${label} share name is required.`;
+  if (raw.length < 3 || raw.length > 63) return `${label} share name must be 3-63 characters.`;
+  if (!/^[a-z0-9-]+$/.test(raw)) return `${label} share name can use lowercase letters, numbers, and hyphen only.`;
+  if (!/^[a-z0-9].*[a-z0-9]$/.test(raw)) return `${label} share name must start and end with a letter or number.`;
+  if (raw.includes('--')) return `${label} share name cannot contain consecutive hyphens.`;
+  return '';
+}
+
+function storageShareErrors() {
+  const cfg = normalizeStorageOptions(state.storageOptions);
+  return {
+    smb: cfg.smbEnabled ? storageShareNameError(cfg.smbShareName, 'SMB') : '',
+    nfs: cfg.nfsEnabled ? storageShareNameError(cfg.nfsShareName, 'NFS') : ''
+  };
+}
+
+function hasAnyStorageValidationErrors() {
+  const errs = storageShareErrors();
+  return !!(errs.smb || errs.nfs);
+}
+
+state.storageOptions = defaultStorageOptions();
 
 const sizeFilterMeta = {
   family: { label: 'Family', values: sizeFamilyValues },
@@ -1572,6 +1700,12 @@ function loadUiState() {
     if (parsed.sizeFilters && typeof parsed.sizeFilters === 'object') {
       Object.assign(state.sizeFilters, parsed.sizeFilters);
     }
+    if (parsed.storageOptions && typeof parsed.storageOptions === 'object') {
+      state.storageOptions = normalizeStorageOptions(parsed.storageOptions);
+    }
+    if (typeof parsed.extraOptionsOpen === 'boolean') {
+      state.extraOptionsOpen = parsed.extraOptionsOpen;
+    }
     if (Number.isInteger(parsed.activeVmIndex) && parsed.activeVmIndex >= 0) {
       state.activeVmIndex = parsed.activeVmIndex;
     }
@@ -1585,6 +1719,8 @@ function saveUiState() {
     const payload = {
       vms: state.vms,
       sizeFilters: state.sizeFilters,
+      storageOptions: state.storageOptions,
+      extraOptionsOpen: state.extraOptionsOpen,
       activeVmIndex: state.activeVmIndex
     };
     localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(payload));
@@ -1615,10 +1751,14 @@ loadUiState();
   // -----------------------------
   // ARM Generator (pure transform from sanitized VM model -> ARM template object)
   // -----------------------------
-  function generateArmTemplate(vms) {
+  function generateArmTemplate(vms, storageOptions) {
     const imageMap = Object.fromEntries(imageOptions.map(o => [o.key, o.ref]));
     const locationExpr = "[resourceGroup().location]";
     const hasAnyUltraSsdDataDisk = (vms || []).some(vm => (vm.disks || []).some(d => d && d.sku === 'UltraSSD_LRS'));
+    const storageCfg = normalizeStorageOptions(storageOptions);
+    const includeSmb = !!storageCfg.smbEnabled;
+    const includeNfs = !!storageCfg.nfsEnabled;
+    const includeAnyFileStorage = includeSmb || includeNfs;
 
     const template = {
       "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -1645,6 +1785,24 @@ loadUiState();
       "resources": [],
       "outputs": { "vmFqdns": { "type": "array", "value": [] } }
     };
+
+    if (includeSmb) {
+      template.parameters.smbShareName = {
+        "type": "string",
+        "defaultValue": storageCfg.smbShareName
+      };
+      template.variables.smbStorageAccountName = "[toLower(concat('smb', take(uniqueString(resourceGroup().id), 20)))]";
+    }
+    if (includeNfs) {
+      template.parameters.nfsShareName = {
+        "type": "string",
+        "defaultValue": storageCfg.nfsShareName
+      };
+      template.variables.nfsStorageAccountName = "[toLower(concat('nfs', take(uniqueString(subscription().id, resourceGroup().id), 20)))]";
+    }
+    if (includeAnyFileStorage) {
+      template.variables.privateDnsZoneName = "privatelink.file.core.windows.net";
+    }
 
     if (!hasAnyUltraSsdDataDisk) {
       delete template.parameters.ultraAvailabilityZone;
@@ -1682,6 +1840,17 @@ loadUiState();
       "properties": { "addressSpace": { "addressPrefixes": ["[variables('addressPrefix')]"] } }
     });
 
+    const subnetProperties = {
+      "addressPrefix": "[variables('subnetPrefix')]",
+      "networkSecurityGroup": { "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]" }
+    };
+    if (includeAnyFileStorage) {
+      subnetProperties.privateEndpointNetworkPolicies = "Disabled";
+      subnetProperties.serviceEndpoints = [
+        { "service": "Microsoft.Storage" }
+      ];
+    }
+
     template.resources.push({
       "type": "Microsoft.Network/virtualNetworks/subnets",
       "apiVersion": "2024-05-01",
@@ -1690,11 +1859,204 @@ loadUiState();
         "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
         "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
       ],
-      "properties": {
-        "addressPrefix": "[variables('subnetPrefix')]",
-        "networkSecurityGroup": { "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]" }
-      }
+      "properties": subnetProperties
     });
+
+    if (includeAnyFileStorage) {
+      template.resources.push({
+        "type": "Microsoft.Network/privateDnsZones",
+        "apiVersion": "2024-06-01",
+        "name": "[variables('privateDnsZoneName')]",
+        "location": "global"
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+        "apiVersion": "2024-06-01",
+        "name": "[format('{0}/{1}', variables('privateDnsZoneName'), 'files-vnet-link')]",
+        "location": "global",
+        "dependsOn": [
+          "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]",
+          "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+        ],
+        "properties": {
+          "registrationEnabled": false,
+          "virtualNetwork": {
+            "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+          }
+        }
+      });
+    }
+
+    if (includeSmb) {
+      template.resources.push({
+        "type": "Microsoft.Storage/storageAccounts",
+        "apiVersion": "2023-05-01",
+        "name": "[variables('smbStorageAccountName')]",
+        "location": locationExpr,
+        "sku": { "name": "Standard_LRS" },
+        "kind": "StorageV2",
+        "properties": {
+          "supportsHttpsTrafficOnly": true,
+          "minimumTlsVersion": "TLS1_2",
+          "allowSharedKeyAccess": true,
+          "allowBlobPublicAccess": false,
+          "publicNetworkAccess": "Disabled"
+        }
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+        "apiVersion": "2023-05-01",
+        "name": "[format('{0}/default/{1}', variables('smbStorageAccountName'), parameters('smbShareName'))]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Storage/storageAccounts', variables('smbStorageAccountName'))]"
+        ],
+        "properties": {
+          "enabledProtocols": "SMB",
+          "shareQuota": 100,
+          "accessTier": "TransactionOptimized"
+        }
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Network/privateEndpoints",
+        "apiVersion": "2024-05-01",
+        "name": "smb-files-pe",
+        "location": locationExpr,
+        "dependsOn": [
+          "[resourceId('Microsoft.Storage/storageAccounts', variables('smbStorageAccountName'))]",
+          "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+        ],
+        "properties": {
+          "subnet": {
+            "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+          },
+          "privateLinkServiceConnections": [
+            {
+              "name": "smb-files-connection",
+              "properties": {
+                "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('smbStorageAccountName'))]",
+                "groupIds": ["file"]
+              }
+            }
+          ]
+        }
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+        "apiVersion": "2024-05-01",
+        "name": "[format('{0}/{1}', 'smb-files-pe', 'default')]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Network/privateEndpoints', 'smb-files-pe')]",
+          "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]"
+        ],
+        "properties": {
+          "privateDnsZoneConfigs": [
+            {
+              "name": "config",
+              "properties": {
+                "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]"
+              }
+            }
+          ]
+        }
+      });
+
+      template.outputs.smbStorageAccountName = {
+        "type": "string",
+        "value": "[variables('smbStorageAccountName')]"
+      };
+      template.outputs.smbSharePath = {
+        "type": "string",
+        "value": "[format('\\\\{0}.file.core.windows.net\\{1}', variables('smbStorageAccountName'), parameters('smbShareName'))]"
+      };
+    }
+
+    if (includeNfs) {
+      template.resources.push({
+        "type": "Microsoft.Storage/storageAccounts",
+        "apiVersion": "2023-05-01",
+        "name": "[variables('nfsStorageAccountName')]",
+        "location": locationExpr,
+        "sku": { "name": "Premium_LRS" },
+        "kind": "FileStorage",
+        "properties": {
+          "supportsHttpsTrafficOnly": false,
+          "allowBlobPublicAccess": false,
+          "publicNetworkAccess": "Disabled"
+        }
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+        "apiVersion": "2023-05-01",
+        "name": "[format('{0}/default/{1}', variables('nfsStorageAccountName'), parameters('nfsShareName'))]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Storage/storageAccounts', variables('nfsStorageAccountName'))]"
+        ],
+        "properties": {
+          "enabledProtocols": "NFS",
+          "rootSquash": "NoRootSquash",
+          "shareQuota": 100
+        }
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Network/privateEndpoints",
+        "apiVersion": "2024-05-01",
+        "name": "nfs-files-pe",
+        "location": locationExpr,
+        "dependsOn": [
+          "[resourceId('Microsoft.Storage/storageAccounts', variables('nfsStorageAccountName'))]",
+          "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+        ],
+        "properties": {
+          "subnet": {
+            "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName'))]"
+          },
+          "privateLinkServiceConnections": [
+            {
+              "name": "nfs-files-connection",
+              "properties": {
+                "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('nfsStorageAccountName'))]",
+                "groupIds": ["file"]
+              }
+            }
+          ]
+        }
+      });
+
+      template.resources.push({
+        "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+        "apiVersion": "2024-05-01",
+        "name": "[format('{0}/{1}', 'nfs-files-pe', 'default')]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Network/privateEndpoints', 'nfs-files-pe')]",
+          "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]"
+        ],
+        "properties": {
+          "privateDnsZoneConfigs": [
+            {
+              "name": "config",
+              "properties": {
+                "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]"
+              }
+            }
+          ]
+        }
+      });
+
+      template.outputs.nfsStorageAccountName = {
+        "type": "string",
+        "value": "[variables('nfsStorageAccountName')]"
+      };
+      template.outputs.nfsSharePath = {
+        "type": "string",
+        "value": "[format('{0}.file.core.windows.net:/{0}/{1}', variables('nfsStorageAccountName'), parameters('nfsShareName'))]"
+      };
+    }
 
     vms.forEach(vm => {
       const vmName = vm.name;
@@ -2110,6 +2472,44 @@ loadUiState();
     </table>`;
   }
 
+  function renderStorageSummary() {
+    const section = $('storageSummarySection');
+    const host = $('storageSummary');
+    if (!section || !host) return;
+
+    const cfg = normalizeStorageOptions(state.storageOptions);
+    const smbOn = !!cfg.smbEnabled;
+    const nfsOn = !!cfg.nfsEnabled;
+    const hasAnyProtocolEnabled = smbOn || nfsOn;
+
+    // Show summary only when storage is enabled and at least one protocol is selected.
+    section.style.display = hasAnyProtocolEnabled ? '' : 'none';
+    if (!hasAnyProtocolEnabled) {
+      host.innerHTML = '';
+      return;
+    }
+
+    const smbBlock = smbOn
+      ? `<div class="box" style="margin-top: 0;">
+          <div class="row" style="margin-bottom: 6px;"><strong>SMB</strong><span class="pill ok">Enabled</span></div>
+          <table class="summary"><tbody>
+            <tr><td>Share parameter</td><td>${cfg.smbShareName}</td></tr>
+          </tbody></table>
+        </div>`
+      : '';
+
+    const nfsBlock = nfsOn
+      ? `<div class="box" style="margin-top: 0;">
+          <div class="row" style="margin-bottom: 6px;"><strong>NFS</strong><span class="pill ok">Enabled</span></div>
+          <table class="summary"><tbody>
+            <tr><td>Share parameter</td><td>${cfg.nfsShareName}</td></tr>
+          </tbody></table>
+        </div>`
+      : '';
+
+    host.innerHTML = `<div style="display:grid;grid-template-columns:1fr;gap:8px;">${smbBlock}${nfsBlock}</div>`;
+  }
+
   function renderNics(vm) {
     ensureNic(vm);
     const list = $('nicList');
@@ -2303,6 +2703,48 @@ loadUiState();
     }
   }
 
+  function renderStorageSection() {
+    state.storageOptions = normalizeStorageOptions(state.storageOptions);
+    const cfg = state.storageOptions;
+
+    const enableSmb = $('enableSmbStorage');
+    const enableNfs = $('enableNfsStorage');
+    const smbWrap = $('smbShareFieldWrap');
+    const nfsWrap = $('nfsShareFieldWrap');
+    const smbShare = $('smbShareName');
+    const nfsShare = $('nfsShareName');
+    const smbErr = $('smbShareNameError');
+    const nfsErr = $('nfsShareNameError');
+
+    if (!enableSmb || !enableNfs || !smbWrap || !nfsWrap || !smbShare || !nfsShare || !smbErr || !nfsErr) return;
+
+    enableSmb.checked = !!cfg.smbEnabled;
+    enableNfs.checked = !!cfg.nfsEnabled;
+
+    smbWrap.style.display = cfg.smbEnabled ? 'block' : 'none';
+    nfsWrap.style.display = cfg.nfsEnabled ? 'block' : 'none';
+
+    smbShare.value = cfg.smbShareName;
+    nfsShare.value = cfg.nfsShareName;
+    smbShare.disabled = !cfg.smbEnabled;
+    nfsShare.disabled = !cfg.nfsEnabled;
+
+    const errs = storageShareErrors();
+    smbErr.textContent = errs.smb;
+    nfsErr.textContent = errs.nfs;
+  }
+
+  function renderExtraOptionsPanel() {
+    const panel = $('extraOptionsPanel');
+    const btn = $('toggleExtraOptionsBtn');
+    if (!panel || !btn) return;
+
+    const open = !!state.extraOptionsOpen;
+    panel.style.display = open ? 'block' : 'none';
+    btn.textContent = 'Extra options';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   function sanitizeVm(vm, idx) {
     // Single-VM normalization pass.
     // This function is intentionally defensive and is called frequently before render/output.
@@ -2352,12 +2794,14 @@ loadUiState();
     sanitizeAllVms();
     saveUiState();
     renderVmSummaryTable();
+    renderStorageSummary();
 
     const hasVmNameErrors = hasAnyVmNameErrors();
     const hasNicNameErrors = hasAnyNicNameErrors();
     const hasDiskErrors = hasAnyDiskValidationErrors();
     const hasAttachmentErrors = hasAnyAttachmentLimitErrors();
-    const hasValidationErrors = hasVmNameErrors || hasNicNameErrors || hasDiskErrors || hasAttachmentErrors;
+    const hasStorageErrors = hasAnyStorageValidationErrors();
+    const hasValidationErrors = hasVmNameErrors || hasNicNameErrors || hasDiskErrors || hasAttachmentErrors || hasStorageErrors;
 
     $('copyBtn').disabled = hasValidationErrors;
     $('deployPortalBtn').disabled = hasValidationErrors;
@@ -2365,6 +2809,8 @@ loadUiState();
     if (hasValidationErrors) {
       if (hasAttachmentErrors) {
         $('output').value = 'Fix VM size attachment limit errors (NIC/data disk counts) before generating the ARM template.';
+      } else if (hasStorageErrors) {
+        $('output').value = 'Fix SMB/NFS share name validation errors in Extra options before generating the ARM template.';
       } else if (hasVmNameErrors && hasNicNameErrors && hasDiskErrors) {
         $('output').value = 'Fix VM, NIC, and data disk validation errors before generating the ARM template.';
       } else if (hasVmNameErrors && hasNicNameErrors) {
@@ -2383,7 +2829,7 @@ loadUiState();
       return;
     }
 
-    const arm = generateArmTemplate(vms);
+    const arm = generateArmTemplate(vms, state.storageOptions);
     $('output').value = JSON.stringify(arm, null, 2);
   }
 
@@ -2529,7 +2975,7 @@ loadUiState();
       // --- Generation (from matched image) ---
       const gen = imageMatch.gen || 'Gen2';
 
-      // --- Custom data (cleared on import — round-trip decoding not guaranteed safe) ---
+      // --- Custom data (cleared on import) ---
       const customData = '';
 
       // --- Reboot flag (can't be inferred from ARM, default false) ---
@@ -2572,7 +3018,6 @@ loadUiState();
           publicIp: hasPublicIp
         });
       });
-      // (nicRefs already ordered by ARM with primary first, but just in case)
 
       // --- Data disks ---
       const rawDisks = (props.storageProfile && props.storageProfile.dataDisks) || [];
@@ -2638,6 +3083,8 @@ loadUiState();
     renderHints(vm);
     renderNics(vm);
     renderDisks(vm);
+    renderExtraOptionsPanel();
+    renderStorageSection();
 
     updateOutput();
   }
@@ -2936,6 +3383,36 @@ loadUiState();
 
     populateImageSelect(vm);
     renderHints(vm);
+    updateOutput();
+  };
+
+  $('toggleExtraOptionsBtn').onclick = () => {
+    state.extraOptionsOpen = !state.extraOptionsOpen;
+    renderExtraOptionsPanel();
+    saveUiState();
+  };
+
+  $('enableSmbStorage').onchange = (e) => {
+    state.storageOptions.smbEnabled = !!e.target.checked;
+    renderStorageSection();
+    updateOutput();
+  };
+
+  $('enableNfsStorage').onchange = (e) => {
+    state.storageOptions.nfsEnabled = !!e.target.checked;
+    renderStorageSection();
+    updateOutput();
+  };
+
+  $('smbShareName').oninput = (e) => {
+    state.storageOptions.smbShareName = String(e.target.value || '');
+    renderStorageSection();
+    updateOutput();
+  };
+
+  $('nfsShareName').oninput = (e) => {
+    state.storageOptions.nfsShareName = String(e.target.value || '');
+    renderStorageSection();
     updateOutput();
   };
 
