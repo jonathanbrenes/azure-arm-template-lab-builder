@@ -3937,6 +3937,20 @@ loadUiState();
     saveUiState();
   };
 
+  // Close the Extra options overlay when clicking outside of both the panel and the toggle button.
+  document.addEventListener('click', (e) => {
+    const panel = $('extraOptionsPanel');
+    const toggleBtn = $('toggleExtraOptionsBtn');
+    if (!panel || !toggleBtn || !state.extraOptionsOpen) return;
+
+    const target = e.target;
+    if (panel.contains(target) || toggleBtn.contains(target)) return;
+
+    state.extraOptionsOpen = false;
+    renderExtraOptionsPanel();
+    saveUiState();
+  });
+
   $('enableSmbStorage').onchange = (e) => {
     state.storageOptions.smbEnabled = !!e.target.checked;
     renderStorageSection();
