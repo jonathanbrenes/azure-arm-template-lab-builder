@@ -1,4 +1,4 @@
-# Azure Linux Academy ARM Template UI
+# Linux ARM Template UI
 
 Web-based ARM template builder for Linux lab environments on Azure.
 
@@ -8,6 +8,10 @@ Web-based ARM template builder for Linux lab environments on Azure.
 - Compatibility-aware image filtering by generation, architecture, disk controller, and optional publisher.
 - VM size constraints for generation, controller support, accelerated networking, and disk SKU support.
 - Optional VM size capability filters (9 dimensions) with add/clear flow and removable active chips.
+- Header-level **Extra options** overlay flow for environment settings.
+- Optional SMB/NFS Azure Files resource generation with protocol-specific toggles.
+- Share-name validation for SMB/NFS (length + allowed format), with output gating on validation errors.
+- Storage configuration summary that appears only when SMB and/or NFS is enabled.
 - Attachment limit enforcement per VM size (`maxNics`, `maxDataDisks`).
 - Validation for VM names, NIC names, data disk sizes/SKUs, and attachment limits.
 - Auto-correction behavior with toast notifications when selections become incompatible.
@@ -64,9 +68,11 @@ The app is a single HTML file with embedded CSS and JavaScript. Main parts:
 	- `imageOptions`: OS image metadata and compatibility tags
 	- `sizeOptions`: VM SKU capabilities and constraints
 
-2. **Centralized state** (`state` object)
+3. **Centralized state** (`state` object)
 	- `vms[]`: in-memory array of VM definitions (size, image, NICs, disks, custom data, etc.)
 	- `sizeFilters`: active filter panel selections
+	- `storageOptions`: SMB/NFS optional storage settings and share names
+	- `extraOptionsOpen`: overlay open/close state for Extra options flow
 	- `activeVmIndex`: currently selected VM tab
 	- Per-cycle caches (`_imageCache`, `_dupVmNamesCache`) cleared by `invalidateCycleCaches()`
 	- `globalThis` property accessors (`vms`, `active`, `sizeFilters`) for backward compatibility
@@ -78,7 +84,7 @@ The app is a single HTML file with embedded CSS and JavaScript. Main parts:
 4. **Generator and render pipeline**
 	- User changes fields
 	- `sanitizeAllVms()` normalizes and auto-corrects incompatible settings
-	- `generateArmTemplate(vms)` produces ARM JSON
+	- `generateArmTemplate(vms, storageOptions)` produces ARM JSON
 	- Output and summary table are refreshed
 	- Full render via `render()` for tab switches, add/remove VM, filter changes
 	- Targeted helpers for common interactions:
@@ -106,6 +112,7 @@ The app is a single HTML file with embedded CSS and JavaScript. Main parts:
 	- invalidate per-cycle caches
 	- enforce constraints via `sanitizeAllVms()`
 	- optionally show toast messages for auto-fixes
+	- apply optional SMB/NFS storage settings from Extra options
 	- regenerate ARM output
 	- save state to localStorage
 
@@ -278,6 +285,17 @@ Copy the emitted object and paste it into the appropriate family section in `siz
 
 ---
 
+## Extra Options (Storage Overlay)
+
+- The **Extra options** button in the header opens an overlay flow panel.
+- The panel currently controls optional storage resources:
+	- **Add SMB storage account + share**
+	- **Add NFS storage account + share**
+- Share name fields are shown only for enabled protocols.
+- If neither SMB nor NFS is selected, no storage resources are added to the generated ARM.
+
+---
+
 ## Validation and Output Gating
 
 The UI blocks output actions when any of these fail:
@@ -286,6 +304,7 @@ The UI blocks output actions when any of these fail:
 - NIC naming rules (format/uniqueness in VM)
 - Data disk size/SKU validation
 - VM-size attachment limits (`maxNics`, `maxDataDisks`)
+- SMB/NFS share-name validation when protocol is enabled
 
 When limits are hit:
 
@@ -297,7 +316,7 @@ When limits are hit:
 
 ## Deployment Assist (Copy + Portal)
 
-- Export actions are grouped in a segmented button bar: **Copy** | **Copy + Portal** | **Download**, separated by a divider from **Import JSON**.
+- Export actions are shown under **Generated ARM JSON** as: **Copy** | **Copy + Portal** | **Download**, with **Import JSON** aligned on the same action row.
 - **Copy + Portal** does the following:
 	1. Copies ARM JSON to clipboard
 	2. Shows an inline warning/countdown near action buttons
@@ -325,8 +344,7 @@ When limits are hit:
 ## Custom Data Behavior
 
 - Custom data text is base64-encoded directly for ARM `osProfile.customData`.
-- Optional checkbox: **Reboot required after deployment**
-  - when enabled, appends `sleep 60 && reboot &` to custom data payload.
+- Optional checkbox: **Reboot required after deployment** (UI state is preserved in configuration).
 
 ---
 
@@ -349,7 +367,7 @@ When limits are hit:
 
 ## State Persistence
 
-- VM configuration, size filters, and active tab index are auto-saved to `localStorage` under key `armBuilderUiStateV1`.
+- VM configuration, size filters, storage options, overlay open/close state, and active tab index are auto-saved to `localStorage` under key `armBuilderUiStateV1`.
 - State is restored on page load via `loadUiState()`.
 - Saved after every change via `saveUiState()` (called from `updateOutput()`).
 - If localStorage is unavailable or corrupted, the app starts with defaults.
