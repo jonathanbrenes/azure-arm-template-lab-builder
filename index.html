@@ -430,8 +430,19 @@
   // ---------------------------------------------------------------------------
   // Utility helpers (ID generation, text encoding, customData conversion)
   // ---------------------------------------------------------------------------
+  /**
+   * Generates a short random hex string for use as a unique identifier.
+   * Used to assign unique IDs to VMs, NICs, and other internal objects.
+   * @returns {string} A random hex string (e.g. 'a3f9c1e2').
+   */
   function uid() { return Math.random().toString(16).slice(2); }
 
+  /**
+   * Encodes a string as base64 using UTF-8 byte representation.
+   * Works correctly with multi-byte characters (e.g. Unicode).
+   * @param {string} text - The plain text to encode.
+   * @returns {string} The base64-encoded string.
+   */
   function toBase64Utf8(text) {
     const bytes = new TextEncoder().encode(String(text || ''));
     let binary = '';
@@ -439,6 +450,14 @@
     return btoa(binary);
   }
 
+  /**
+   * Encodes VM custom data for use in an ARM template's osProfile.customData field.
+   * Base64-encodes the raw content directly. If {@link rebootRequired} is true,
+   * appends a delayed reboot command before encoding.
+   * @param {string} text - The raw custom data content.
+   * @param {boolean} rebootRequired - Whether to append a delayed reboot command.
+   * @returns {string} Base64-encoded string ready for ARM customData, or '' if empty.
+   */
   function encodeCustomDataForArm(text, rebootRequired) {
     const raw = String(text || '').replace(/\r\n/g, '\n');
     if (!raw.trim()) return '';
@@ -481,6 +500,13 @@ const state = {
   _dupVmNamesCache: null
 };
 
+/**
+ * Shows a transient toast notification at the bottom-right of the viewport.
+ * Automatically hides after {@link LIMITS.TOAST_DURATION_MS} milliseconds.
+ * Used to inform users of auto-corrections, import results, and limit warnings.
+ * @param {string} title - Bold heading text for the toast.
+ * @param {string} msg - Descriptive body text.
+ */
 function showToast(title, msg) {
   const t = document.getElementById('toast');
   const tt = document.getElementById('toastTitle');
@@ -493,6 +519,13 @@ function showToast(title, msg) {
   state.timers.toast = setTimeout(() => t.classList.remove('show'), LIMITS.TOAST_DURATION_MS);
 }
 
+/**
+ * Shows an inline deployment warning/countdown near the output action buttons.
+ * Displays a countdown timer that ticks every second before auto-opening the
+ * Azure portal custom deployment page. The panel auto-hides when the countdown finishes.
+ * @param {string} msg - Instructional text shown in the deploy flow panel.
+ * @param {number} seconds - Countdown duration in seconds (defaults to {@link LIMITS.DEPLOY_COUNTDOWN_S}).
+ */
 function showDeployFlow(msg, seconds) {
   const panel = document.getElementById('deployFlowInline');
   const title = document.getElementById('deployFlowInlineTitle');
@@ -755,6 +788,15 @@ function showDeployFlow(msg, seconds) {
     return imageSortCollator.compare(al, bl);
   });
 
+  /**
+   * Validates the imageOptions catalog at startup.
+   * Checks that every image entry has a unique `key` and a unique `ref`
+   * (publisher:offer:sku:version). Throws an Error with a detailed list
+   * of issues if any duplicates or missing fields are found.
+   * Called once on page load — if this throws, the UI will not start.
+   * @param {Array<Object>} options - The imageOptions array to validate.
+   * @throws {Error} If any image key or ref is duplicated or missing.
+   */
   function validateImageOptionsConfig(options) {
     const keySeen = new Map();
     const refSeen = new Map();
@@ -1098,6 +1140,13 @@ const maxDiskSizeGbBySku = {
 };
 const diskSkus = Object.keys(maxDiskSizeGbBySku);
 
+/**
+ * Extracts the VM size family letter prefix from an Azure SKU name.
+ * For example, 'Standard_D4s_v5' returns 'D', 'Standard_E2bds_v5' returns 'E'.
+ * Used for the 'Family' filter dimension in the VM size filter panel.
+ * @param {string} name - The Azure VM size name (e.g. 'Standard_D4s_v5').
+ * @returns {string} The uppercase family letter(s), or '' if not recognized.
+ */
 function sizeFamilyForName(name) {
   const raw = String(name || '');
   const m = raw.match(/^Standard_([A-Za-z]+)\d/i);
@@ -1121,6 +1170,11 @@ state.sizeFilters = {
   minDataDisks: ''
 };
 
+/**
+ * Returns the default storage configuration object.
+ * Both SMB and NFS are disabled by default. Share names use sensible defaults.
+ * @returns {{smbEnabled: boolean, nfsEnabled: boolean, smbShareName: string, nfsShareName: string}}
+ */
 function defaultStorageOptions() {
   return {
     smbEnabled: false,
@@ -1130,6 +1184,14 @@ function defaultStorageOptions() {
   };
 }
 
+/**
+ * Normalizes an Azure Files share name to meet naming constraints.
+ * Lowercases, strips invalid characters, trims edge hyphens, and pads
+ * to at least 3 characters. Truncates to 63 characters max.
+ * @param {string} name - The raw share name input.
+ * @param {string} fallback - Fallback name if the result is empty after normalization.
+ * @returns {string} A normalized, valid share name.
+ */
 function normalizeShareName(name, fallback) {
   let value = String(name || '').trim().toLowerCase();
   value = value.replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '');
@@ -1140,6 +1202,13 @@ function normalizeShareName(name, fallback) {
   return value;
 }
 
+/**
+ * Normalizes a raw storage options object into a complete, valid configuration.
+ * Fills in missing fields with defaults from {@link defaultStorageOptions}.
+ * Handles backward compatibility with a legacy top-level `enabled` toggle.
+ * @param {Object} raw - The raw storage options object (may be incomplete or null).
+ * @returns {Object} A fully populated storage options object.
+ */
 function normalizeStorageOptions(raw) {
   const next = defaultStorageOptions();
   if (!raw || typeof raw !== 'object') return next;
@@ -1162,6 +1231,14 @@ function normalizeStorageOptions(raw) {
   return next;
 }
 
+/**
+ * Validates an Azure Files share name against Azure naming rules:
+ * 3–63 characters, lowercase letters/numbers/hyphens only, must start and end
+ * with a letter or number, no consecutive hyphens ('--').
+ * @param {string} name - The share name to validate.
+ * @param {string} label - A human-readable label for error messages (e.g. 'SMB' or 'NFS').
+ * @returns {string} An error message string, or '' if the name is valid.
+ */
 function storageShareNameError(name, label) {
   const raw = String(name || '').trim();
   if (!raw) return `${label} share name is required.`;
@@ -1172,6 +1249,11 @@ function storageShareNameError(name, label) {
   return '';
 }
 
+/**
+ * Returns validation error messages for both SMB and NFS share names.
+ * Only validates share names for protocols that are currently enabled.
+ * @returns {{smb: string, nfs: string}} An object with error strings ('' if valid).
+ */
 function storageShareErrors() {
   const cfg = normalizeStorageOptions(state.storageOptions);
   return {
@@ -1180,6 +1262,11 @@ function storageShareErrors() {
   };
 }
 
+/**
+ * Checks whether any enabled storage protocol has a share name validation error.
+ * Used by {@link updateOutput} to gate ARM output generation.
+ * @returns {boolean} True if at least one enabled share name is invalid.
+ */
 function hasAnyStorageValidationErrors() {
   const errs = storageShareErrors();
   return !!(errs.smb || errs.nfs);
@@ -1199,6 +1286,16 @@ const sizeFilterMeta = {
   minDataDisks: { label: 'Min max data disks', values: ['1', '2', '4', '8', '16', '32'] }
 };
 
+/**
+ * Validates the sizeOptions catalog at startup.
+ * Checks that every VM size entry has a unique `name`, valid `tags` structure
+ * (architectures, generations, diskControllersByGen, diskSkuSupport, accelNetMode,
+ * maxNics, maxDataDisks), and no unknown enum values. Throws an Error with a
+ * detailed list of issues if any problems are found.
+ * Called once on page load — if this throws, the UI will not start.
+ * @param {Array<Object>} options - The sizeOptions array to validate.
+ * @throws {Error} If any size name is duplicated or tags are invalid/incomplete.
+ */
 function validateSizeOptionsConfig(options) {
   const allowedArchitectures = new Set(['x64', 'Arm64']);
   const allowedGenerations = new Set(['Gen1', 'Gen2']);
@@ -1324,14 +1421,34 @@ validateSizeOptionsConfig(sizeOptions);
   // ---------------------------------------------------------------------------
   // View-model defaults and lookup helpers
   // ---------------------------------------------------------------------------
+  /**
+   * Creates a default NIC model object with a sequential name.
+   * The first NIC (index 0) gets a public IP by default; subsequent NICs do not.
+   * @param {number} idx - Zero-based NIC index within the VM.
+   * @returns {{id: string, name: string, accelerated: boolean, publicIp: boolean}}
+   */
   function defaultNic(idx) {
     return { id: uid(), name: `nic${idx+1}`, accelerated: false, publicIp: idx === 0 };
   }
 
+  /**
+   * Looks up a VM size entry by name from the sizeOptions catalog.
+   * Falls back to the first entry if not found (defensive default).
+   * @param {string} name - The Azure VM size name (e.g. 'Standard_D4s_v5').
+   * @returns {Object} The matching sizeOptions entry.
+   */
   function sizeByName(name) {
     return sizeOptions.find(s => s.name === name) || sizeOptions[0];
   }
 
+  /**
+   * Tests whether a VM size matches all currently active size filters.
+   * Evaluates up to 9 filter dimensions: family, architecture, generation,
+   * disk controller, disk SKU support, accelerated networking, ephemeral
+   * OS disk support, minimum NICs, and minimum data disks.
+   * @param {Object} size - A sizeOptions entry with `name` and `tags`.
+   * @returns {boolean} True if the size matches all active filters (or no filters are set).
+   */
   function sizeMatchesFilters(size) {
     const tags = (size && size.tags) || {};
     const family = sizeFamilyForName(size && size.name);
@@ -1361,15 +1478,30 @@ validateSizeOptionsConfig(sizeOptions);
     return true;
   }
 
+  /**
+   * Returns the subset of sizeOptions that match all currently active size filters.
+   * @returns {Array<Object>} Filtered array of size entries.
+   */
   function filteredSizeOptions() {
     return sizeOptions.filter(sizeMatchesFilters);
   }
 
+  /**
+   * Checks whether a specific VM size is excluded by the current filters.
+   * Used to show a hint when the active VM's size doesn't match the filter set.
+   * @param {string} sizeName - The VM size name to check.
+   * @returns {boolean} True if the size does NOT match current filters.
+   */
   function sizeIsOutsideFilters(sizeName) {
     const size = sizeByName(sizeName);
     return !sizeMatchesFilters(size);
   }
 
+  /**
+   * Generates the next available default VM name (e.g. 'vm1', 'vm2', 'vm3').
+   * Skips names already in use in the global `vms` array.
+   * @returns {string} An unused VM name like 'vm<N>'.
+   */
   function nextDefaultVmName() {
     const used = new Set(vms.map(v => String(v.name || '').trim().toLowerCase()).filter(Boolean));
     let n = 1;
@@ -1377,6 +1509,12 @@ validateSizeOptionsConfig(sizeOptions);
     return `vm${n}`;
   }
 
+  /**
+   * Generates the next available default NIC name within a VM (e.g. 'nic1', 'nic2').
+   * Skips names already in use in the VM's NIC list.
+   * @param {Object} vm - The VM model whose NICs are checked.
+   * @returns {string} An unused NIC name like 'nic<N>'.
+   */
   function nextDefaultNicName(vm) {
     const used = new Set((vm.nics || []).map(n => String((n && n.name) || '').trim().toLowerCase()).filter(Boolean));
     let n = 1;
@@ -1384,6 +1522,13 @@ validateSizeOptionsConfig(sizeOptions);
     return `nic${n}`;
   }
 
+  /**
+   * Generates the next available clone VM name based on a source VM name.
+   * Strips any existing '-clone-N' suffixes, then appends '-clone-1', '-clone-2', etc.
+   * Skips names already in use in the global `vms` array.
+   * @param {string} sourceName - The name of the VM being cloned.
+   * @returns {string} A unique clone name like 'vm1-clone-1'.
+   */
   function nextCloneVmName(sourceName) {
     const used = new Set(vms.map(v => String(v.name || '').trim().toLowerCase()).filter(Boolean));
     let base = String(sourceName || 'vm').trim() || 'vm';
@@ -1404,6 +1549,12 @@ validateSizeOptionsConfig(sizeOptions);
     return candidate;
   }
 
+  /**
+   * Returns a Set of lowercased VM names that appear more than once.
+   * Result is cached per render cycle in `state._dupVmNamesCache` and
+   * invalidated by {@link invalidateCycleCaches}.
+   * @returns {Set<string>} Lowercased names that are duplicates.
+   */
   function duplicateVmNamesSet() {
     if (state._dupVmNamesCache) return state._dupVmNamesCache;
     const counts = new Map();
@@ -1420,6 +1571,11 @@ validateSizeOptionsConfig(sizeOptions);
     return dupes;
   }
 
+  /**
+   * Checks whether the VM at a given index shares its name with another VM.
+   * @param {number} index - The index into the global `vms` array.
+   * @returns {boolean} True if this VM's name is a duplicate.
+   */
   function hasDuplicateVmNameAt(index) {
     const vm = vms[index];
     if (!vm) return false;
@@ -1428,6 +1584,13 @@ validateSizeOptionsConfig(sizeOptions);
     return duplicateVmNamesSet().has(key);
   }
 
+  /**
+   * Validates a VM name against Azure naming rules.
+   * Must be 1–{@link LIMITS.VM_NAME_MAX_LEN} characters, only letters/numbers/hyphens,
+   * and must start and end with a letter or number.
+   * @param {string} name - The VM name to validate.
+   * @returns {string} An error message, or '' if the name is valid.
+   */
   function vmNameFormatError(name) {
     const trimmed = String(name || '').trim();
     if (!trimmed) return 'VM name is required.';
@@ -1440,6 +1603,12 @@ validateSizeOptionsConfig(sizeOptions);
     return '';
   }
 
+  /**
+   * Returns a composite error message for the VM at the given index.
+   * Checks format validity first, then uniqueness across all VMs.
+   * @param {number} index - The index into the global `vms` array.
+   * @returns {string} An error message, or '' if the VM name is valid and unique.
+   */
   function vmNameErrorAt(index) {
     const vm = vms[index];
     if (!vm) return '';
@@ -1449,10 +1618,22 @@ validateSizeOptionsConfig(sizeOptions);
     return '';
   }
 
+  /**
+   * Checks whether any VM in the global `vms` array has a name error (format or duplicate).
+   * Used by {@link updateOutput} to gate ARM output generation.
+   * @returns {boolean} True if at least one VM has a name error.
+   */
   function hasAnyVmNameErrors() {
     return vms.some((_, i) => !!vmNameErrorAt(i));
   }
 
+  /**
+   * Computes the maximum allowed NIC name length given a VM name.
+   * The NIC resource name in ARM is `<vmName>-<nicName>`, and the PIP name
+   * is `<vmName>-<nicName>-pip`. Both must fit within {@link LIMITS.AZ_NETWORK_NAME_MAX_LEN}.
+   * @param {string} vmName - The parent VM name.
+   * @returns {number} Maximum character length for the NIC name (minimum 1).
+   */
   function nicNameMaxLengthForVmName(vmName) {
     // NIC name contributes to both:
     // - NIC resource: <vm_name>-<nic_name>
@@ -1462,6 +1643,14 @@ validateSizeOptionsConfig(sizeOptions);
     return Math.max(1, LIMITS.AZ_NETWORK_NAME_MAX_LEN - vmLen - 5);
   }
 
+  /**
+   * Validates a NIC name against Azure resource naming rules.
+   * The full resource name in ARM is `<vmName>-<nicName>` (and `<vmName>-<nicName>-pip`
+   * for public IPs), so the NIC name max length depends on the VM name length.
+   * @param {string} vmName - The parent VM name (used for length calculation).
+   * @param {string} nicName - The NIC name to validate.
+   * @returns {string} An error message, or '' if the NIC name is valid.
+   */
   function nicNameFormatError(vmName, nicName) {
     const trimmed = String(nicName || '').trim();
     if (!trimmed) return 'NIC name is required.';
@@ -1478,6 +1667,11 @@ validateSizeOptionsConfig(sizeOptions);
     return '';
   }
 
+  /**
+   * Returns a Set of lowercased NIC names that appear more than once within a VM.
+   * @param {Object} vm - The VM model whose NICs are checked.
+   * @returns {Set<string>} Lowercased NIC names that are duplicates.
+   */
   function duplicateNicNamesSet(vm) {
     const counts = new Map();
     (vm.nics || []).forEach(nic => {
@@ -1492,6 +1686,13 @@ validateSizeOptionsConfig(sizeOptions);
     return dupes;
   }
 
+  /**
+   * Returns a composite error message for a specific NIC on a VM.
+   * Checks format validity first, then uniqueness within the VM's NIC list.
+   * @param {Object} vm - The parent VM model object.
+   * @param {Object} nic - The NIC object to validate.
+   * @returns {string} An error message, or '' if the NIC name is valid and unique.
+   */
   function nicNameError(vm, nic) {
     const formatErr = nicNameFormatError(vm.name, nic.name);
     if (formatErr) return formatErr;
@@ -1503,10 +1704,21 @@ validateSizeOptionsConfig(sizeOptions);
     return '';
   }
 
+  /**
+   * Checks whether any NIC across all VMs has a name error (format or duplicate).
+   * Used by {@link updateOutput} to gate ARM output generation.
+   * @returns {boolean} True if at least one NIC has a name error.
+   */
   function hasAnyNicNameErrors() {
     return vms.some(vm => (vm.nics || []).some(nic => !!nicNameError(vm, nic)));
   }
 
+  /**
+   * Validates a data disk's size against its SKU's maximum.
+   * Size must be a finite number > 1 GB and <= the max for the disk's SKU.
+   * @param {Object} disk - A data disk object with `sizeGB` and `sku` properties.
+   * @returns {string} An error message, or '' if the disk configuration is valid.
+   */
   function diskSizeError(disk) {
     const size = Number(disk && disk.sizeGB);
     const sku = String((disk && disk.sku) || '');
@@ -1521,42 +1733,92 @@ validateSizeOptionsConfig(sizeOptions);
     return '';
   }
 
+  /**
+   * Checks whether any data disk across all VMs has a size validation error.
+   * Used by {@link updateOutput} to gate ARM output generation.
+   * @returns {boolean} True if at least one data disk has an invalid size.
+   */
   function hasAnyDiskValidationErrors() {
     return vms.some(vm => (vm.disks || []).some(d => !!diskSizeError(d)));
   }
 
+  /**
+   * Returns the list of VM generations supported by the VM's current size.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {string[]} Allowed generations (e.g. ['Gen1', 'Gen2']).
+   */
   function allowedGenerationsFor(vm) {
     return sizeByName(vm.size).tags.generations;
   }
 
+  /**
+   * Returns the list of CPU architectures supported by the VM's current size.
+   * Falls back to ['x64'] if the size has no architecture tags.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {string[]} Allowed architectures (e.g. ['x64'] or ['Arm64']).
+   */
   function allowedArchitecturesFor(vm) {
     const sz = sizeByName(vm.size);
     return (sz.tags && sz.tags.architectures && sz.tags.architectures.length) ? sz.tags.architectures : ['x64'];
   }
 
+  /**
+   * Looks up an image entry from the imageOptions catalog by its unique key.
+   * @param {string} key - The image key to search for.
+   * @returns {Object|undefined} The matching imageOptions entry, or undefined.
+   */
   function imageByKey(key) {
     return imageOptions.find(i => i.key === key);
   }
 
+  /**
+   * Returns the list of disk controllers allowed for the VM's current size and generation.
+   * Falls back to ['SCSI'] if no mapping exists for the active generation.
+   * @param {Object} vm - A VM model object with `size` and `gen` properties.
+   * @returns {string[]} Allowed controllers (e.g. ['SCSI'], ['NVMe'], or ['SCSI', 'NVMe']).
+   */
   function allowedControllersFor(vm) {
   const sz = sizeByName(vm.size);
   const map = (sz.tags && sz.tags.diskControllersByGen) ? sz.tags.diskControllersByGen : {};
   return map[vm.gen] || ['SCSI'];
 }
+/**
+ * Checks whether accelerated networking is supported (optional or required) for a VM's size.
+ * @param {Object} vm - A VM model object with a `size` property.
+ * @returns {boolean} True if accel net is 'optional' or 'required'.
+ */
 function accelNetSupportedFor(vm) {
     return accelNetModeFor(vm) !== 'unsupported';
   }
 
+  /**
+   * Checks whether accelerated networking is required (not optional) for a VM's size.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {boolean} True if accel net mode is 'required'.
+   */
   function accelNetRequiredFor(vm) {
     return accelNetModeFor(vm) === 'required';
   }
 
+  /**
+   * Returns the accelerated networking mode for a VM's current size.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {'required'|'optional'|'unsupported'} The accel net mode string.
+   */
   function accelNetModeFor(vm) {
     const tags = sizeByName(vm.size).tags || {};
     if (tags.accelNetMode) return tags.accelNetMode;
     return tags.accelNet ? 'optional' : 'unsupported';
   }
 
+  /**
+   * Resolves the effective accelerated networking setting for a specific NIC.
+   * Returns true if required by the size, false if unsupported, or the NIC's
+   * own `accelerated` preference when the mode is optional.
+   * @param {Object} vm - The parent VM model.
+   * @param {Object} nic - The NIC object with an `accelerated` property.
+   * @returns {boolean} The resolved accelerated networking state.
+   */
   function resolvedAccelForNic(vm, nic) {
     const mode = accelNetModeFor(vm);
     if (mode === 'required') return true;
@@ -1564,16 +1826,33 @@ function accelNetSupportedFor(vm) {
     return !!nic.accelerated;
   }
 
+  /**
+   * Returns the maximum number of NICs allowed by a VM's current size.
+   * Falls back to 2 if not specified.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {number} The maximum NIC count.
+   */
   function maxNicsFor(vm) {
     const tags = sizeByName(vm.size).tags || {};
     return Number(tags.maxNics || 2);
   }
 
+  /**
+   * Returns the maximum number of data disks allowed by a VM's current size.
+   * Falls back to 4 if not specified.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {number} The maximum data disk count.
+   */
   function maxDataDisksFor(vm) {
     const tags = sizeByName(vm.size).tags || {};
     return Number(tags.maxDataDisks || 4);
   }
 
+  /**
+   * Returns an error message if a VM's NIC count exceeds its size's maxNics limit.
+   * @param {Object} vm - The VM model object.
+   * @returns {string} An error message, or '' if within limits.
+   */
   function nicAttachmentCountError(vm) {
     const max = maxNicsFor(vm);
     const count = (vm.nics || []).length;
@@ -1581,6 +1860,11 @@ function accelNetSupportedFor(vm) {
     return '';
   }
 
+  /**
+   * Returns an error message if a VM's data disk count exceeds its size's maxDataDisks limit.
+   * @param {Object} vm - The VM model object.
+   * @returns {string} An error message, or '' if within limits.
+   */
   function diskAttachmentCountError(vm) {
     const max = maxDataDisksFor(vm);
     const count = (vm.disks || []).length;
@@ -1588,10 +1872,22 @@ function accelNetSupportedFor(vm) {
     return '';
   }
 
+  /**
+   * Checks whether any VM exceeds its NIC or data disk attachment limit.
+   * Used by {@link updateOutput} to gate ARM output generation.
+   * @returns {boolean} True if at least one VM exceeds a size attachment limit.
+   */
   function hasAnyAttachmentLimitErrors() {
     return vms.some(vm => !!nicAttachmentCountError(vm) || !!diskAttachmentCountError(vm));
   }
 
+  /**
+   * Returns a map of disk SKU names to boolean support flags for a VM's current size.
+   * Missing flags are filled with sensible defaults (Standard/StandardSSD/Premium = true,
+   * PremiumV2/Ultra = false).
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {Object<string, boolean>} Disk SKU support flags.
+   */
   function diskSupportFlagsFor(vm) {
     const tags = sizeByName(vm.size).tags || {};
     const flags = tags.diskSkuSupport || {};
@@ -1611,17 +1907,35 @@ function accelNetSupportedFor(vm) {
     };
   }
 
+  /**
+   * Returns the list of disk SKU names supported by a VM's current size.
+   * Only includes SKUs where the support flag is true.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {string[]} Supported disk SKU names (e.g. ['Standard_LRS', 'Premium_LRS']).
+   */
   function supportedDiskSkusFor(vm) {
     const flags = diskSupportFlagsFor(vm);
     return diskSkus.filter(s => !!flags[s]);
   }
 
+  /**
+   * Returns the preferred default disk SKU for a VM's current size.
+   * Prefers 'StandardSSD_LRS' if supported; otherwise uses the first supported SKU.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {string} The default disk SKU name.
+   */
   function defaultDiskSkuFor(vm) {
     const supported = supportedDiskSkusFor(vm);
     if (supported.includes('StandardSSD_LRS')) return 'StandardSSD_LRS';
     return supported[0] || 'Standard_LRS';
   }
 
+  /**
+   * Coerces unsupported data disk SKUs to the default for the VM's current size.
+   * Called after a VM size change to fix any disks whose SKU is no longer valid.
+   * @param {Object} vm - A VM model object whose disks will be mutated.
+   * @returns {number} The number of disks that were changed.
+   */
   function normalizeDataDiskSkus(vm) {
     const supported = supportedDiskSkusFor(vm);
     const fallback = defaultDiskSkuFor(vm);
@@ -1635,6 +1949,14 @@ function accelNetSupportedFor(vm) {
     return changed;
   }
 
+  /**
+   * Returns OS images compatible with a VM's current size, generation, and disk controller.
+   * Results are cached per render cycle in `state._imageCache` for performance.
+   * Filters by: generation, architecture, disk controller capability, and optionally publisher.
+   * @param {Object} vm - The VM model with size/gen/diskControllerType/publisherFilter.
+   * @param {boolean} includePublisherFilter - When true, also filters by vm.publisherFilter.
+   * @returns {Array<Object>} Array of matching imageOptions entries.
+   */
   function filteredImages(vm, includePublisherFilter) {
     // Per-cycle cache: key = size|gen|controller|publisherFilter|includePublisher
     if (!state._imageCache) state._imageCache = new Map();
@@ -1658,16 +1980,37 @@ function accelNetSupportedFor(vm) {
     return candidates;
   }
 
+  /**
+   * Returns OS images filtered by generation, architecture, controller, AND publisher.
+   * This is the primary filter used by image dropdowns and sanitization.
+   * Shorthand for `filteredImages(vm, true)`.
+   * @param {Object} vm - The VM model object.
+   * @returns {Array<Object>} Array of matching imageOptions entries.
+   */
   function filterImagesFor(vm) {
     // Filter by generation + architecture + controller + optional publisher.
     return filteredImages(vm, true);
   }
 
+/**
+ * Returns OS images filtered by generation, architecture, and controller only
+ * (excludes publisher filter). Used to populate the publisher dropdown so all
+ * compatible publishers are shown regardless of the current publisher selection.
+ * Shorthand for `filteredImages(vm, false)`.
+ * @param {Object} vm - The VM model object.
+ * @returns {Array<Object>} Array of matching imageOptions entries.
+ */
 function baseFilteredImagesFor(vm) {
   // Same as above but without publisher filter (used to populate publisher list).
   return filteredImages(vm, false);
 }
 
+/**
+ * Returns a sorted list of unique publisher names from images compatible with the VM.
+ * Uses {@link baseFilteredImagesFor} (no publisher filter) to enumerate all publishers.
+ * @param {Object} vm - The VM model object.
+ * @returns {string[]} Sorted array of publisher names (e.g. ['Canonical', 'Debian', 'RedHat']).
+ */
 function publishersFor(vm) {
   const pubs = new Set(baseFilteredImagesFor(vm).map(i => (i.ref && i.ref.publisher) || '').filter(Boolean));
   return Array.from(pubs).sort((a, b) => String(a).localeCompare(String(b)));
@@ -1687,6 +2030,12 @@ state.vms = [
   }
 ];
 
+/**
+ * Restores saved UI state from localStorage.
+ * Loads VMs, size filters, storage options, extra-options open state, and active tab index.
+ * Silently falls back to defaults if localStorage is unavailable or data is corrupted.
+ * Called once at startup before the first render.
+ */
 function loadUiState() {
   try {
     const raw = localStorage.getItem(UI_STATE_STORAGE_KEY);
@@ -1714,6 +2063,12 @@ function loadUiState() {
   }
 }
 
+/**
+ * Persists current UI state to localStorage.
+ * Saves VMs, size filters, storage options, extra-options open state, and active tab index
+ * under the key defined by {@link UI_STATE_STORAGE_KEY}.
+ * Called from {@link updateOutput} after every user change.
+ */
 function saveUiState() {
   try {
     const payload = {
@@ -1751,6 +2106,23 @@ loadUiState();
   // -----------------------------
   // ARM Generator (pure transform from sanitized VM model -> ARM template object)
   // -----------------------------
+  /**
+   * Generates a complete ARM template JSON object from the current VM configurations
+   * and optional storage settings.
+   *
+   * This is a pure function (no side effects) that transforms the sanitized VM model
+   * into a deployable ARM template. It produces:
+   *   - Shared network resources: NSG, VNet, subnet.
+   *   - Per-VM resources: NICs, optional public IPs, and VM resources.
+   *   - Optional storage resources (SMB/NFS): storage accounts, file shares,
+   *     private endpoints, private DNS zones/links, and outputs.
+   *   - Ultra SSD handling: zonal placement and ultraSSDEnabled when applicable.
+   *   - Custom data encoding: direct base64.
+   *
+   * @param {Array<Object>} vms - Array of sanitized VM model objects.
+   * @param {Object} storageOptions - Storage configuration from state.storageOptions.
+   * @returns {Object} A complete ARM template object ready for JSON.stringify().
+   */
   function generateArmTemplate(vms, storageOptions) {
     const imageMap = Object.fromEntries(imageOptions.map(o => [o.key, o.ref]));
     const locationExpr = "[resourceGroup().location]";
@@ -2181,10 +2553,20 @@ loadUiState();
   /** @deprecated Alias kept for brevity — prefer el() for clarity. */
   const $ = el;
 
+  /**
+   * Ensures a VM has at least one NIC. If the NIC array is empty or missing,
+   * creates a default primary NIC. Called defensively before rendering NICs.
+   * @param {Object} vm - The VM model object (mutated in place).
+   */
   function ensureNic(vm) {
     if (!vm.nics || vm.nics.length === 0) vm.nics = [ defaultNic(0) ];
   }
 
+  /**
+   * Renders the VM tab bar. Creates a button for each VM, highlighting the active tab.
+   * Supports keyboard navigation (ArrowLeft/Right/Home/End) and ARIA tablist semantics.
+   * Also updates the Remove VM button's disabled state.
+   */
   function renderTabs() {
     const tabsEl = $('tabs');
     tabsEl.innerHTML = '';
@@ -2214,6 +2596,12 @@ loadUiState();
     $('removeVmBtn').disabled = vms.length <= 1;
   }
 
+  /**
+   * Replaces all options in a `<select>` element with new values.
+   * @param {HTMLSelectElement} selectEl - The select element to populate.
+   * @param {string[]} values - Array of option values.
+   * @param {Object<string, string>} [labelsByValue] - Optional map of value → display label.
+   */
   function setSelectOptions(selectEl, values, labelsByValue) {
     if (!selectEl) return;
     selectEl.innerHTML = '';
@@ -2225,6 +2613,11 @@ loadUiState();
     });
   }
 
+  /**
+   * Renders the filter dimension dropdowns inside the size filter panel dialog.
+   * One dropdown per filter dimension (family, arch, gen, controller, etc.).
+   * Pre-selects the current filter values from `state.sizeFilters`.
+   */
   function renderSizeFilterPanelFields() {
     const grid = $('sizeFilterGrid');
     if (!grid) return;
@@ -2254,6 +2647,11 @@ loadUiState();
     });
   }
 
+  /**
+   * Renders active size filter values as removable chip buttons.
+   * Shows "No active filters" if none are set. Also triggers a screen-reader
+   * announcement of the matching size count via the aria-live region.
+   */
   function renderSizeFilterChips() {
     const chips = $('sizeFilterChips');
     if (!chips) return;
@@ -2293,6 +2691,12 @@ loadUiState();
     }
   }
 
+  /**
+   * Switches the VM's size to the first matching filtered size if the current
+   * size is no longer in the filtered set. Prevents an invalid size from
+   * remaining selected after filter changes.
+   * @param {Object} vm - The VM model object (mutated in place).
+   */
   function alignVmSizeToActiveFilters(vm) {
     const filtered = filteredSizeOptions();
     if (!vm || !filtered.length) return;
@@ -2301,6 +2705,11 @@ loadUiState();
     }
   }
 
+  /**
+   * Populates the VM Size dropdown with sizes that match the current filters.
+   * Shows "No VM sizes match filters" and disables the select if the list is empty.
+   * @param {Object} vm - The active VM model (used to set the selected value).
+   */
   function populateSizeSelect(vm) {
     const sel = $('vmSize');
     sel.innerHTML = '';
@@ -2329,6 +2738,12 @@ loadUiState();
     }
   }
 
+  /**
+   * Populates the VM Generation dropdown with generations allowed by the current size.
+   * Auto-corrects `vm.gen` if the current value is no longer valid.
+   * Disables the dropdown when only one generation is available.
+   * @param {Object} vm - The VM model object (may be mutated).
+   */
   function populateGenSelect(vm) {
     const sel = $('vmGen');
     sel.innerHTML = '';
@@ -2344,6 +2759,12 @@ loadUiState();
     sel.disabled = allowed.length <= 1;
   }
 
+  /**
+   * Populates the Disk Controller dropdown with controllers allowed by the current
+   * size and generation. Auto-corrects `vm.diskControllerType` if invalid.
+   * Disables the dropdown when only one controller is available.
+   * @param {Object} vm - The VM model object (may be mutated).
+   */
   function populateControllerSelect(vm) {
     const sel = $('diskController');
     sel.innerHTML = '';
@@ -2359,6 +2780,12 @@ loadUiState();
     sel.disabled = allowed.length <= 1;
   }
 
+  /**
+   * Populates the Publisher dropdown with publishers available for the current
+   * VM's compatibility constraints. Includes an "All publishers" option.
+   * Clears `vm.publisherFilter` if the previously selected publisher is no longer available.
+   * @param {Object} vm - The VM model object (may be mutated).
+   */
   function populatePublisherSelect(vm) {
     const sel = $('vmPublisher');
     if (!sel) return;
@@ -2381,6 +2808,12 @@ loadUiState();
     sel.value = vm.publisherFilter || '';
   }
 
+  /**
+   * Populates the OS Image dropdown with images compatible with the VM's current
+   * size, generation, controller, and optional publisher filter.
+   * Auto-corrects `vm.imageKey` if the current image is no longer in the list.
+   * @param {Object} vm - The VM model object (may be mutated).
+   */
   function populateImageSelect(vm) {
     const sel = $('vmImage');
     sel.innerHTML = '';
@@ -2395,6 +2828,12 @@ loadUiState();
     sel.value = vm.imageKey;
   }
 
+  /**
+   * Updates the hint text below the VM Size and OS Image selects.
+   * Shows accelerated networking mode, NIC/disk limits, filter mismatch warnings,
+   * and NVMe-only notices based on the VM's current size and filters.
+   * @param {Object} vm - The active VM model object.
+   */
   function renderHints(vm) {
     const hintEl = $('sizeHint');
     const sz = sizeByName(vm.size);
@@ -2427,6 +2866,11 @@ loadUiState();
     $('imageHint').textContent = imgs.length ? notes.join(' ') : 'No images match this size. Add more image mappings or relax filters.';
   }
 
+  /**
+   * Renders the VM Configuration Summary table below the ARM JSON output.
+   * Displays one row per VM with name, size, image, controller, NIC count, and disk count.
+   * Shows "No VMs defined" if the VM list is empty.
+   */
   function renderVmSummaryTable() {
     const host = $('vmSummary');
     if (!host) return;
@@ -2472,6 +2916,11 @@ loadUiState();
     </table>`;
   }
 
+  /**
+   * Renders the Storage Configuration Summary section below the VM summary.
+   * Only visible when at least one storage protocol (SMB/NFS) is enabled.
+   * Shows protocol-specific cards with the configured share name.
+   */
   function renderStorageSummary() {
     const section = $('storageSummarySection');
     const host = $('storageSummary');
@@ -2510,6 +2959,12 @@ loadUiState();
     host.innerHTML = `<div style="display:grid;grid-template-columns:1fr;gap:8px;">${smbBlock}${nfsBlock}</div>`;
   }
 
+  /**
+   * Renders the NIC list for the active VM. Creates a card for each NIC with:
+   * name input, accelerated networking toggle (respects size policy), public IP toggle,
+   * and a remove button. Also shows NIC attachment limit errors if exceeded.
+   * @param {Object} vm - The VM model whose NICs are rendered.
+   */
   function renderNics(vm) {
     ensureNic(vm);
     const list = $('nicList');
@@ -2619,6 +3074,12 @@ loadUiState();
     }
   }
 
+  /**
+   * Renders the data disk list for the active VM. Creates a card for each disk with:
+   * size input, SKU dropdown (filtered to supported SKUs), and a remove button.
+   * Also shows disk attachment limit errors if exceeded.
+   * @param {Object} vm - The VM model whose data disks are rendered.
+   */
   function renderDisks(vm) {
     const diskList = $('diskList');
     diskList.innerHTML = '';
@@ -2703,6 +3164,11 @@ loadUiState();
     }
   }
 
+  /**
+   * Syncs the Extra options storage panel UI with the current storage options state.
+   * Updates checkbox states, share name input values, disabled states, and validation errors.
+   * Called after any storage option change.
+   */
   function renderStorageSection() {
     state.storageOptions = normalizeStorageOptions(state.storageOptions);
     const cfg = state.storageOptions;
@@ -2734,6 +3200,10 @@ loadUiState();
     nfsErr.textContent = errs.nfs;
   }
 
+  /**
+   * Shows or hides the Extra options overlay panel based on `state.extraOptionsOpen`.
+   * Updates the toggle button's aria-expanded attribute and visual state.
+   */
   function renderExtraOptionsPanel() {
     const panel = $('extraOptionsPanel');
     const btn = $('toggleExtraOptionsBtn');
@@ -2745,6 +3215,15 @@ loadUiState();
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
+  /**
+   * Normalizes and auto-corrects a single VM's configuration.
+   * Ensures the VM has valid name, generation, disk controller, image, NIC defaults,
+   * and accelerated networking settings for its current size. Coerces invalid disk SKUs.
+   * This function is intentionally defensive and is called frequently before render/output.
+   * @param {Object} vm - The VM model object (mutated in place).
+   * @param {number} idx - The VM's index in the global `vms` array.
+   * @returns {Object} The same VM object (for chaining).
+   */
   function sanitizeVm(vm, idx) {
     // Single-VM normalization pass.
     // This function is intentionally defensive and is called frequently before render/output.
@@ -2776,17 +3255,32 @@ loadUiState();
     return vm;
   }
 
+  /**
+   * Clears per-cycle computation caches so the next render/updateOutput picks up fresh data.
+   * Must be called at the start of {@link render} and {@link updateOutput}.
+   */
   function invalidateCycleCaches() {
     // Clear per-cycle caches so the next computation picks up fresh data.
     state._imageCache = null;
     state._dupVmNamesCache = null;
   }
 
+  /**
+   * Runs {@link sanitizeVm} on every VM in the global `vms` array.
+   * Called at the start of {@link updateOutput} to enforce all constraints.
+   */
   function sanitizeAllVms() {
     // Global normalization pass.
     vms.forEach((vm, idx) => sanitizeVm(vm, idx));
   }
 
+  /**
+   * Main recompute step after any user change.
+   * Pipeline: invalidate caches → sanitize all VMs → save state → render summaries →
+   * validate (VM names, NIC names, disks, attachments, storage) → generate ARM JSON.
+   * Disables output actions (copy/download/deploy) when validation errors exist.
+   * Updates the output textarea with the generated ARM JSON or an error message.
+   */
   function updateOutput() {
     // Main recompute step after any user change:
     // sanitize -> validate names -> generate ARM -> update textarea + summary.
@@ -2837,6 +3331,12 @@ loadUiState();
   // Targeted render helpers (avoid full DOM teardown for every interaction)
   // ---------------------------------------------------------------------------
 
+  /**
+   * Updates simple form field values for the active VM without creating or destroying DOM.
+   * A targeted render helper used for lightweight updates (e.g. switching tabs).
+   * Updates: VM meta text, name, custom data, reboot checkbox, size, and NIC/disk button states.
+   * @param {Object} vm - The active VM model object.
+   */
   function renderVmFormFields(vm) {
     // Update simple form field values — no DOM creation/destruction.
     $('vmMeta').textContent = `VM ${active + 1} of ${vms.length}`;
@@ -2849,6 +3349,11 @@ loadUiState();
     updateNicDiskButtons(vm);
   }
 
+  /**
+   * Repopulates the generation, controller, publisher, and image dropdowns
+   * for the active VM. A targeted render helper that avoids full DOM teardown.
+   * @param {Object} vm - The active VM model object.
+   */
   function renderVmSelects(vm) {
     // Repopulate the generation / controller / publisher / image dropdowns.
     populateGenSelect(vm);
@@ -2857,12 +3362,23 @@ loadUiState();
     populateImageSelect(vm);
   }
 
+  /**
+   * Refreshes the disabled state of the Add NIC and Add Disk buttons
+   * based on the VM's current attachment counts vs. size limits.
+   * @param {Object} vm - The active VM model object.
+   */
   function updateNicDiskButtons(vm) {
     // Refresh the Add NIC / Add Disk button disabled state.
     $('addNicBtn').disabled = (vm.nics || []).length >= maxNicsFor(vm);
     $('addDiskBtn').disabled = (vm.disks || []).length >= maxDataDisksFor(vm);
   }
 
+  /**
+   * Patches NIC name maxLength attributes and error messages in-place
+   * without rebuilding the full NIC DOM. Called when the VM name changes,
+   * since the max NIC name length depends on the VM name length.
+   * @param {Object} vm - The active VM model object.
+   */
   function updateNicNameConstraints(vm) {
     // Patch NIC-name maxLength + error text in-place (avoids full NIC DOM rebuild).
     const maxLen = nicNameMaxLengthForVmName(vm.name);
@@ -2883,6 +3399,16 @@ loadUiState();
   // ---------------------------------------------------------------------------
   // Import ARM JSON → populate tool (best-effort, catalog-constrained)
   // ---------------------------------------------------------------------------
+  /**
+   * Imports an ARM template JSON string and populates the tool with extracted VMs.
+   * Parses Microsoft.Compute/virtualMachines resources and matches vmSize and
+   * imageReference to the local catalogs (case-insensitive). Imports NICs (name,
+   * accelerated networking, public IP), data disks (size, SKU), and disk controller.
+   * VMs whose size or image is not in the catalog are skipped.
+   * Custom data is cleared on import (encoding cannot be reliably reversed).
+   * Shows a summary toast with imported/skipped counts.
+   * @param {string} jsonText - The raw JSON string of the ARM template.
+   */
   function importFromArmJson(jsonText) {
     let template;
     try {
@@ -3065,6 +3591,13 @@ loadUiState();
     showToast('Import complete', parts.join(' '));
   }
 
+  /**
+   * Full UI render pipeline. Rebuilds tabs, selects, NICs, disks, hints, filters,
+   * and the extra options panel from scratch. Used for tab switches, add/remove/clone VM,
+   * filter changes, import, and initial page load.
+   * For partial updates, prefer the targeted render helpers (renderVmFormFields,
+   * renderVmSelects, updateNicDiskButtons, etc.) to avoid unnecessary DOM teardown.
+   */
   function render() {
     // Full UI render pipeline — use for tab switches, add/remove VM, initial load.
     // For partial updates prefer the targeted helpers above.
@@ -3100,6 +3633,10 @@ loadUiState();
   // ---------------------------------------------------------------------------
   // Events
   // --- Filter panel helpers (open / close / focus-trap) ---
+  /**
+   * Opens the VM size filter panel dialog. Renders the filter fields and
+   * focuses the first interactive element inside the panel.
+   */
   function openFilterPanel() {
     const p = $('sizeFilterPanel');
     if (!p) return;
@@ -3108,11 +3645,19 @@ loadUiState();
     const first = p.querySelector('select, button, input');
     if (first) first.focus();
   }
+  /**
+   * Closes the VM size filter panel dialog.
+   * @param {boolean} returnFocus - If true, returns focus to the "+ Add VM filter" button.
+   */
   function closeFilterPanel(returnFocus) {
     const p = $('sizeFilterPanel');
     if (p) p.style.display = 'none';
     if (returnFocus) $('addSizeFilterBtn').focus();
   }
+  /**
+   * Returns whether the VM size filter panel is currently visible.
+   * @returns {boolean} True if the filter panel is open.
+   */
   function filterPanelIsOpen() {
     const p = $('sizeFilterPanel');
     return p && p.style.display !== 'none';
