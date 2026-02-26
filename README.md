@@ -8,7 +8,7 @@ Web-based ARM template builder for Linux lab environments on Azure.
 - Compatibility-aware image filtering by generation, architecture, disk controller, and optional publisher.
 - VM size constraints for generation, controller support, accelerated networking, and disk SKU support.
 - Optional VM size capability filters (9 dimensions) with add/clear flow and removable active chips.
-- Header-level **Extra options** overlay flow for environment settings.
+- Header-level **Extra options** overlay flow for environment settings, with click-outside-to-close dismiss.
 - Optional SMB/NFS Azure Files resource generation with protocol-specific toggles.
 - Share-name validation for SMB/NFS (length + allowed format), with output gating on validation errors.
 - Storage configuration summary that appears only when SMB and/or NFS is enabled.
@@ -27,6 +27,7 @@ Web-based ARM template builder for Linux lab environments on Azure.
 - Named constants (`LIMITS` object) for all magic numbers.
 - Per-cycle computation caches to avoid redundant work during render.
 - Targeted render helpers to minimize DOM teardown on common interactions.
+- Comprehensive JSDoc documentation on all JavaScript functions for IDE support and maintainability.
 - Helper script (`urn-to-imageoption.sh`) to generate `imageOptions` entries from image URNs.
 
 ## Objective
@@ -288,6 +289,7 @@ Copy the emitted object and paste it into the appropriate family section in `siz
 ## Extra Options (Storage Overlay)
 
 - The **Extra options** button in the header opens an overlay flow panel.
+- Clicking outside the overlay panel (or pressing the toggle button again) closes it.
 - The panel currently controls optional storage resources:
 	- **Add SMB storage account + share**
 	- **Add NFS storage account + share**
@@ -394,6 +396,7 @@ When changing this project:
 	- Import JSON loads valid templates and reports skipped VMs
 	- localStorage persistence survives page reload
 	- arrow-key tab navigation and filter panel focus trap work correctly
+	- Extra options overlay closes when clicking outside the panel
 	- generated ARM validates in portal/CLI
 
 ---
