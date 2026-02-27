@@ -2,6 +2,48 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.8] - 2026-02-26
+### Changed
+- Updated README documentation to reflect the current shipped UX and deployment behavior introduced in recent releases.
+- Clarified **Extra options** overlay guidance to include SMB/NFS toggles plus custom NSG rule management in one workflow.
+- Updated docs for **Import JSON** to describe restored storage settings (SMB/NFS), imported custom NSG rules, and import summary messaging.
+- Updated **Custom Data** documentation to describe shebang normalization, CRLF→LF normalization, optional delayed reboot append, and base64 encoding behavior.
+- Updated validation/state persistence docs to include shared-disk validation and persisted custom NSG rules.
+
+## [1.0.7] - 2026-02-26
+### Added
+- **Shared data disk workflow** across VMs (max 2 attachments per shared disk) with:
+  - Enable/disable shared disk actions in the data disk UI.
+  - Attach-existing-shared-disk flow from eligible VMs.
+  - Shared disk assignment details, attachment counts, and participating VM names.
+  - Shared disk ARM resource generation via `Microsoft.Compute/disks` with `maxShares: 2`.
+- **Custom inbound NSG rules** in **Extra options**:
+  - Add/remove rule rows for protocol (TCP/UDP), destination port/port range, and source (AzureCloud/Internet).
+  - Generated NSG includes default SSH rule plus custom user-defined inbound allow rules.
+- **Import JSON enhancements**:
+  - Best-effort SMB/NFS share setting import.
+  - Best-effort custom inbound NSG rule import (excluding default SSH rule).
+  - Import summary now reports storage state and imported custom NSG rule count.
+
+### Changed
+- **Storage overlay UX** improved:
+  - SMB/NFS share fields now use accessibility-friendly visibility behavior.
+  - Overlay now combines storage toggles and custom NSG rule authoring.
+- **Validation/output gating** strengthened:
+  - Shared-disk configuration errors now block copy/download/deploy actions until fixed.
+  - VM size changes that do not support shared disks automatically convert affected shared disks to normal disks with user feedback.
+- **Deployment flow** preserved while expanded:
+  - Output action layout remains **Copy | Copy + Portal | Download | Import JSON**.
+  - Zonal placement logic now accounts for UltraSSD, PremiumV2, and qualifying shared-disk scenarios.
+- **Custom data encoding behavior** hardened:
+  - If custom data does not start with a shebang, `#!/bin/bash` is prepended before encoding.
+  - Line endings are normalized before optional delayed reboot append and base64 encoding.
+- Added RHEL HA 8.8 image option (`RedHat:RHEL-HA:8_8:latest`) to the image catalog.
+
+### Fixed
+- Shared disk clone safety: cloned VMs no longer inherit shared disk attachments, preventing unintended third-attachment scenarios.
+- Imported data disks are normalized as non-shared in the UI model to avoid ambiguous shared-disk reconstruction.
+
 ## [1.0.6] - 2026-02-26
 ### Added
 - **Optional SMB/NFS Azure Files storage** in a new **Extra options** overlay panel accessible from the header.
