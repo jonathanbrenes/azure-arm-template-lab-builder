@@ -7,20 +7,22 @@ Web-based ARM template builder for Linux lab environments on Azure.
 - Multi-VM ARM template builder in a single-page UI.
 - Compatibility-aware image filtering by generation, architecture, disk controller, and optional publisher.
 - VM size constraints for generation, controller support, accelerated networking, and disk SKU support.
+- Shared data disk workflow across VMs (up to 2 attachments per shared disk) with UI guidance and validation.
 - Optional VM size capability filters (9 dimensions) with add/clear flow and removable active chips.
 - Header-level **Extra options** overlay flow for environment settings, with click-outside-to-close dismiss.
 - Optional SMB/NFS Azure Files resource generation with protocol-specific toggles.
+- Extra options support for custom inbound NSG rules (protocol, destination port, source) in addition to default SSH.
 - Share-name validation for SMB/NFS (length + allowed format), with output gating on validation errors.
 - Storage configuration summary that appears only when SMB and/or NFS is enabled.
 - Attachment limit enforcement per VM size (`maxNics`, `maxDataDisks`).
-- Validation for VM names, NIC names, data disk sizes/SKUs, and attachment limits.
+- Validation for VM names, NIC names, data disk sizes/SKUs, shared disk constraints, and attachment limits.
 - Auto-correction behavior with toast notifications when selections become incompatible.
 - ARM output gating: copy/download/deploy actions are disabled until validation issues are fixed.
 - Deployment helper action (**Copy + Portal**) with inline countdown and guidance.
-- **Import JSON**: load a previously generated ARM template to re-populate the tool.
+- **Import JSON**: load a previously generated ARM template to re-populate VMs, storage protocol settings, and custom NSG rules.
 - VM summary table for quick review of generated configuration.
-- Custom data support with optional reboot behavior.
-- Ultra disk handling with zonal placement and `ultraSSDEnabled` support.
+- Custom data support with shebang normalization and optional reboot behavior.
+- Ultra/PremiumV2/shared-disk zonal handling with `ultraSSDEnabled` support when applicable.
 - **localStorage persistence**: VM configuration, filters, and active tab are saved/restored across page reloads.
 - **Accessibility**: ARIA tablist with arrow-key navigation, focus-trapped filter panel, aria-live size count announcements.
 - **Button groups**: segmented control layout for export and VM actions.
@@ -73,6 +75,7 @@ The app is a single HTML file with embedded CSS and JavaScript. Main parts:
 	- `vms[]`: in-memory array of VM definitions (size, image, NICs, disks, custom data, etc.)
 	- `sizeFilters`: active filter panel selections
 	- `storageOptions`: SMB/NFS optional storage settings and share names
+	- `customNsgRules`: user-defined inbound NSG rules from Extra options
 	- `extraOptionsOpen`: overlay open/close state for Extra options flow
 	- `activeVmIndex`: currently selected VM tab
 	- Per-cycle caches (`_imageCache`, `_dupVmNamesCache`) cleared by `invalidateCycleCaches()`
@@ -97,8 +100,10 @@ The app is a single HTML file with embedded CSS and JavaScript. Main parts:
 5. **Import** (`importFromArmJson()`)
 	- Parses ARM template JSON, matches VM sizes and images to catalogs
 	- Imports NICs (name, accel, publicIp), data disks (size, SKU)
+	- Imports SMB/NFS share settings (best-effort from storage share resources)
+	- Imports custom inbound NSG rules (best-effort, excluding default SSH rule)
 	- Skips unrecognized VMs with summary toast
-	- Custom data is cleared (encoding can't be reversed)
+	- Custom data is cleared during import
 
 ---
 
@@ -290,10 +295,15 @@ Copy the emitted object and paste it into the appropriate family section in `siz
 
 - The **Extra options** button in the header opens an overlay flow panel.
 - Clicking outside the overlay panel (or pressing the toggle button again) closes it.
-- The panel currently controls optional storage resources:
+- The panel includes optional storage resources:
 	- **Add SMB storage account + share**
 	- **Add NFS storage account + share**
-- Share name fields are shown only for enabled protocols.
+- Share name fields are toggled per protocol with accessibility-friendly visibility behavior.
+- The panel also includes **Custom NSG rules**:
+	- Add/remove inbound allow rules
+	- Protocol: TCP/UDP
+	- Destination port: single port or port range
+	- Source: AzureCloud/Internet
 - If neither SMB nor NFS is selected, no storage resources are added to the generated ARM.
 
 ---
@@ -305,6 +315,7 @@ The UI blocks output actions when any of these fail:
 - VM naming rules (format/uniqueness)
 - NIC naming rules (format/uniqueness in VM)
 - Data disk size/SKU validation
+- Shared disk validation (unsupported sizes, invalid assignment, over-attachment)
 - VM-size attachment limits (`maxNics`, `maxDataDisks`)
 - SMB/NFS share-name validation when protocol is enabled
 
@@ -337,24 +348,32 @@ When limits are hit:
 	- Matches `imageReference` (publisher + offer + sku) to `imageOptions` catalog (case-insensitive)
 	- Imports NICs: derives short name from full resource name, detects public IP and accelerated networking
 	- Imports data disks: size and SKU (validated against `maxDiskSizeGbBySku`)
-	- Clears custom data (encoding can't be reliably reversed)
+	- Imports SMB/NFS enabled state and share names when present
+	- Imports custom inbound NSG rules (best-effort), excluding default SSH
+	- Initializes imported VM disks as non-shared in the UI model
+	- Clears custom data during import
 - VMs whose size or image is not in the catalog are skipped.
-- A summary toast reports imported count, skipped VMs, and custom data status.
+- A summary toast reports imported VM count, storage state (SMB/NFS), imported NSG rule count, skipped VMs, and custom data status.
 
 ---
 
 ## Custom Data Behavior
 
-- Custom data text is base64-encoded directly for ARM `osProfile.customData`.
+- Custom data is normalized before base64 encoding for ARM `osProfile.customData`:
+	- If first line is not a shebang (`#!`), `#!/bin/bash` is prepended.
+	- CRLF is normalized to LF.
+	- If reboot is enabled, delayed reboot command is appended.
 - Optional checkbox: **Reboot required after deployment** (UI state is preserved in configuration).
 
 ---
 
-## Ultra Disk Behavior
+## Zonal Disk Behavior (Ultra / PremiumV2 / Shared)
 
-- If any VM includes a data disk with `UltraSSD_LRS`:
-  - `additionalCapabilities.ultraSSDEnabled` is set on that VM
-  - a zonal placement parameter is used and VM/PIP are aligned to the selected zone.
+- If any VM includes zonal-required disk scenarios (`UltraSSD_LRS`, `PremiumV2_LRS`, or qualifying shared disk attachment):
+	- `ultraAvailabilityZone` parameter is included in ARM output
+	- VM and Public IP resources are aligned to the selected zone
+	- shared disk resources are emitted as `Microsoft.Compute/disks` with `maxShares: 2` when shared disks are configured
+- `additionalCapabilities.ultraSSDEnabled` is set when a VM has Ultra data disks.
 
 ---
 
@@ -370,6 +389,7 @@ When limits are hit:
 ## State Persistence
 
 - VM configuration, size filters, storage options, overlay open/close state, and active tab index are auto-saved to `localStorage` under key `armBuilderUiStateV1`.
+- Custom NSG rules are also persisted in `localStorage` and restored on reload.
 - State is restored on page load via `loadUiState()`.
 - Saved after every change via `saveUiState()` (called from `updateOutput()`).
 - If localStorage is unavailable or corrupted, the app starts with defaults.
@@ -377,6 +397,8 @@ When limits are hit:
 ---
 
 ## Maintenance Guide
+
+All functions include JSDoc documentation visible in any IDE. See the `ARM Builder UI - Maintenance Guide` comment block at the top of the `<script>` section for architecture and pipeline overview.
 
 When changing this project:
 
@@ -391,9 +413,14 @@ When changing this project:
 	- publisher filter updates image list correctly
 	- duplicate VM names are blocked
 	- NIC/data disk limits enforce correctly for each size
+	- shared disk enable/attach/disable flow works across two VMs
+	- shared disk validation blocks output when configuration is invalid
 	- disk SKU coercion works after size changes
+	- custom NSG rules render, persist, and appear in generated NSG security rules
 	- Copy + Portal shows warning/countdown and opens Azure portal (or shows clear pop-up guidance)
-	- Import JSON loads valid templates and reports skipped VMs
+	- Import JSON restores VMs + SMB/NFS + custom NSG rules and reports skipped VMs
+	- imported data disks are normalized as non-shared in the UI model
+	- custom data shebang normalization works when custom data has no shebang
 	- localStorage persistence survives page reload
 	- arrow-key tab navigation and filter panel focus trap work correctly
 	- Extra options overlay closes when clicking outside the panel
