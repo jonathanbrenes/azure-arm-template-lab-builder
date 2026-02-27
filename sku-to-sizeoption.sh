@@ -20,6 +20,7 @@ set -euo pipefail
 #         generations,
 #         diskControllersByGen,
 #         diskSkuSupport,
+#         sharedDiskSupported,
 #         accelNetMode,
 #         ephemeralOsDiskSupported,
 #         maxNics,
@@ -103,12 +104,18 @@ has_generation() {
 #   9 UltraSSDAvailable (top-level capability)
 #  10 UltraSSDAvailable (zoneDetails capability fallback)
 #  11 EphemeralOSDiskSupported
+#  12 SharedDiskSupported
+#
+# NOTE:
+#   SharedDiskSupported is currently not reliably populated by az vm list-skus
+#   (often empty/false even for SKUs that can use shared disks). Keep this value
+#   for visibility, but validate shared disk compatibility manually.
 mapfile -t SKU_CAPS < <(
   az vm list-skus \
     --location "$REGION" \
     --resource-type virtualMachines \
     --all \
-    --query "[?name=='$SKU_NAME'] | [0].[capabilities[?name=='CpuArchitectureType'] | [0].value, capabilities[?name=='HyperVGenerations'] | [0].value, capabilities[?name=='DiskControllerTypes'] | [0].value, capabilities[?name=='AcceleratedNetworkingEnabled'] | [0].value, capabilities[?name=='MaxNetworkInterfaces'] | [0].value, capabilities[?name=='MaxDataDiskCount'] | [0].value, capabilities[?name=='PremiumIO'] | [0].value, capabilities[?name=='PremiumV2Supported'] | [0].value, capabilities[?name=='UltraSSDAvailable'] | [0].value, locationInfo[0].zoneDetails[0].capabilities[?name=='UltraSSDAvailable'] | [0].value, capabilities[?name=='EphemeralOSDiskSupported'] | [0].value]" \
+    --query "[?name=='$SKU_NAME'] | [0].[capabilities[?name=='CpuArchitectureType'] | [0].value, capabilities[?name=='HyperVGenerations'] | [0].value, capabilities[?name=='DiskControllerTypes'] | [0].value, capabilities[?name=='AcceleratedNetworkingEnabled'] | [0].value, capabilities[?name=='MaxNetworkInterfaces'] | [0].value, capabilities[?name=='MaxDataDiskCount'] | [0].value, capabilities[?name=='PremiumIO'] | [0].value, capabilities[?name=='PremiumV2Supported'] | [0].value, capabilities[?name=='UltraSSDAvailable'] | [0].value, locationInfo[0].zoneDetails[0].capabilities[?name=='UltraSSDAvailable'] | [0].value, capabilities[?name=='EphemeralOSDiskSupported'] | [0].value, capabilities[?name=='SharedDiskSupported'] | [0].value]" \
     -o tsv
 )
 
@@ -123,9 +130,10 @@ PREMIUM_V2="${SKU_CAPS[7]:-}"
 ULTRA_SSD="${SKU_CAPS[8]:-}"
 ULTRA_SSD_ZONE="${SKU_CAPS[9]:-}"
 EPHEMERAL_OS_DISK="${SKU_CAPS[10]:-}"
+SHARED_DISK_SUPPORTED="${SKU_CAPS[11]:-}"
 
 # Normalize Azure placeholder values.
-for v in ARCH HYPERV DCTL ACCEL MAX_NICS MAX_DISKS PREMIUM_IO PREMIUM_V2 ULTRA_SSD ULTRA_SSD_ZONE EPHEMERAL_OS_DISK; do
+for v in ARCH HYPERV DCTL ACCEL MAX_NICS MAX_DISKS PREMIUM_IO PREMIUM_V2 ULTRA_SSD ULTRA_SSD_ZONE EPHEMERAL_OS_DISK SHARED_DISK_SUPPORTED; do
   if [[ "${!v:-}" == "None" || "${!v:-}" == "null" ]]; then
     printf -v "$v" '%s' ""
   fi
@@ -150,6 +158,7 @@ ULTRA_TOP_BOOL="$(normalize_bool "${ULTRA_SSD:-false}")"
 ULTRA_ZONE_BOOL="$(normalize_bool "${ULTRA_SSD_ZONE:-false}")"
 ACCEL_BOOL="$(normalize_bool "${ACCEL:-false}")"
 EPHEMERAL_OS_DISK_BOOL="$(normalize_bool "${EPHEMERAL_OS_DISK:-false}")"
+SHARED_DISK_SUPPORTED_BOOL="$(normalize_bool "${SHARED_DISK_SUPPORTED:-false}")"
 
 if [[ "$ULTRA_TOP_BOOL" == "true" || "$ULTRA_ZONE_BOOL" == "true" ]]; then
   ULTRA_BOOL="true"
@@ -213,6 +222,8 @@ EOF
 }
 
 cat <<EOF
+  // NOTE: SharedDiskSupported from az vm list-skus is not reliably populated.
+  // Manual validation is required for shared-disk compatibility.
   {
     name: '${SKU_NAME}',
     tags: {
@@ -226,6 +237,7 @@ $(emit_disk_controllers_by_gen "$GENERATIONS_LIST")
         PremiumV2_LRS: ${PREMIUM_V2_BOOL},
         UltraSSD_LRS: ${ULTRA_BOOL}
       },
+      sharedDiskSupported: ${SHARED_DISK_SUPPORTED_BOOL},
       accelNetMode: '${ACCEL_MODE}',
       ephemeralOsDiskSupported: ${EPHEMERAL_OS_DISK_BOOL},
       maxNics: ${MAX_NICS},
