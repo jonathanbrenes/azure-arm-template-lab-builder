@@ -45,7 +45,7 @@ Web-based ARM template builder for multi-VM Linux lab environments on Azure.
 
 ## New in Current Local Version
 
-Compared to the `main` hosted copy, your current local UI includes an expanded JSON workspace:
+Local UI includes an expanded JSON workspace:
 
 - Maximize/minimize JSON editor using corner controls (`⛶` and `□`)
 - Full-screen JSON view (`Expanded ARM JSON`)
@@ -106,7 +106,7 @@ Generated artifacts:
   - `data/size-options.js`
   - `data/arm-generator.js`
   - `app.js`
-- ARM generation logic is intentionally separated into `data/arm-generator.js`, while interaction/state logic lives in `app.js`.
+  - ARM generation logic is intentionally separated into `data/arm-generator.js`, while interaction/state logic lives in `app.js`.
 
 ## Key Functions Implemented
 
