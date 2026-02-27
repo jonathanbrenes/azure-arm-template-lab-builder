@@ -224,7 +224,6 @@
         </div>
       </div>
       <div class="muted">Storage account names are auto-generated with <code class="inline">uniqueString()</code>. Only selected protocols are added to the ARM output.</div>
-
       <div class="row" style="margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid var(--border);">
         <strong>Custom NSG rules</strong>
         <button id="addNsgRuleBtn" type="button" style="font-size: 12px; padding: 5px 8px;">+ Add rule</button>
@@ -466,7 +465,6 @@
     for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return btoa(binary);
   }
-
   /**
    * Encodes VM custom data for use in an ARM template's osProfile.customData field.
    * If the raw content does not start with a shebang line (e.g. #!/bin/bash),
@@ -487,13 +485,11 @@
     const hasShebang = /^#!/.test(normalizedRaw.trimStart());
     const withShebang = hasShebang ? normalizedRaw : `#!/bin/bash\n${normalizedRaw}`;
 
-    // Append reboot command once, before choosing encoding path.
     const payload = rebootRequired
       ? `${withShebang}\n\nsleep 60 && reboot &`
       : withShebang;
     return toBase64Utf8(payload);
   }
-
 // ---------------------------------------------------------------------------
 // UI feedback helper (small transient notifications for auto-fixes)
 // ---------------------------------------------------------------------------
@@ -1230,7 +1226,7 @@ function defaultStorageOptions() {
     smbEnabled: false,
     nfsEnabled: false,
     smbShareName: 'smbshare',
-    nfsShareName: 'nfsshare'
+    nfsShareName: 'nfsshare',
   };
 }
 
@@ -2383,8 +2379,8 @@ loadUiState();
    *   - Per-VM resources: NICs, optional public IPs, and VM resources.
    *   - Optional storage resources (SMB/NFS): storage accounts, file shares,
    *     private endpoints, private DNS zones/links, and outputs.
-  *   - Ultra/PremiumV2 handling: zonal placement and ultraSSDEnabled when applicable.
-  *   - Custom data encoding: base64 with shebang normalization and optional delayed reboot.
+   *   - Ultra/PremiumV2 handling: zonal placement and ultraSSDEnabled when applicable.
+   *   - Custom data encoding (base64): payload is base64-encoded for ARM customData.
    *
    * @param {Array<Object>} vms - Array of sanitized VM model objects.
    * @param {Object} storageOptions - Storage configuration from state.storageOptions.
@@ -3762,8 +3758,7 @@ loadUiState();
 
   /**
    * Syncs the Extra options storage panel UI with the current storage options state.
-  * Updates checkbox states, share name input values, disabled states, and
-  * validation errors. Called after any storage option change.
+   * Updates checkbox states, share name input values, disabled states, validation
    */
   function renderStorageSection() {
     state.storageOptions = normalizeStorageOptions(state.storageOptions);
@@ -3790,7 +3785,6 @@ loadUiState();
     nfsShare.value = cfg.nfsShareName;
     smbShare.disabled = !cfg.smbEnabled;
     nfsShare.disabled = !cfg.nfsEnabled;
-
     const errs = storageShareErrors();
     smbErr.textContent = errs.smb;
     nfsErr.textContent = errs.nfs;
@@ -4769,7 +4763,6 @@ loadUiState();
     renderStorageSection();
     updateOutput();
   };
-
   $('addNsgRuleBtn').onclick = () => {
     state.customNsgRules = state.customNsgRules || [];
     state.customNsgRules.push({ protocol: 'Tcp', port: '', source: 'AzureCloud' });
