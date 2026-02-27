@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.0.9] - 2026-02-27
+### Changed
+- Updated public-facing README to reflect the current product release behavior and UX flows.
+- Documented split/static delivery model clearly:
+  - `index.html` as the split entry that loads external `styles.css` and JavaScript assets.
+  - `index.static.html` as the single-file static variant.
+- Added documentation for expanded JSON workspace behavior (maximize/minimize controls and mirrored output actions in expanded view).
+- Added a new user-facing function map section in README for key runtime flows, including generation, output refresh, import, storage rendering, expanded JSON controls, and bootstrap lifecycle.
+- Clarified deployment behavior that generated templates synchronize `/etc/hosts` on each VM with hostname/IP entries for all VMs created by the same ARM template deployment.
+- Added the `/etc/hosts` synchronization note in both README sections where users look for behavior details (`UI Behavior` and `Import Behavior`).
+- Removed internal-source/build references from README and kept documentation focused on public artifacts and user-visible outcomes.
+
 ## [1.0.8] - 2026-02-26
 ### Changed
 - Updated README documentation to reflect the current shipped UX and deployment behavior introduced in recent releases.
