@@ -202,7 +202,7 @@
         <div>
           <div class="toggle" style="margin-bottom: 8px;">
             <input id="enableSmbStorage" type="checkbox" />
-            <span class="muted" style="margin-top: 0;">Add SMB storage account + share</span>
+            <span class="muted" style="margin-top: 0;">Enable SMB file share resources</span>
           </div>
           <div id="smbShareFieldWrap" class="share-field-slot" aria-hidden="true">
             <label for="smbShareName">SMB share name</label>
@@ -210,11 +210,10 @@
             <div id="smbShareNameError" class="error-text"></div>
           </div>
         </div>
-
         <div>
           <div class="toggle" style="margin-bottom: 8px;">
             <input id="enableNfsStorage" type="checkbox" />
-            <span class="muted" style="margin-top: 0;">Add NFS storage account + share</span>
+            <span class="muted" style="margin-top: 0;">Enable NFS file share resources</span>
           </div>
           <div id="nfsShareFieldWrap" class="share-field-slot" aria-hidden="true">
             <label for="nfsShareName">NFS share name</label>
@@ -223,7 +222,7 @@
           </div>
         </div>
       </div>
-      <div class="muted">Storage account names are auto-generated with <code class="inline">uniqueString()</code>. Only selected protocols are added to the ARM output.</div>
+
       <div class="row" style="margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid var(--border);">
         <strong>Custom NSG rules</strong>
         <button id="addNsgRuleBtn" type="button" style="font-size: 12px; padding: 5px 8px;">+ Add rule</button>
@@ -376,7 +375,6 @@
       </div>
     </div>
   </div>
-
 <script>
   /*
    * =============================================================================
@@ -418,9 +416,9 @@
    *   - Event handlers call the minimum set of helpers needed for each action.
    *
    * Import
-  *   - importFromArmJson() parses an ARM template, matches VM sizes and images
-  *     to the catalogs, and builds VM models. Unrecognized sizes/images are
-  *     skipped. Custom data is cleared on import.
+   *   - importFromArmJson() parses an ARM template, matches VM sizes and images
+   *     to the catalogs, and builds VM models. Unrecognized sizes/images are
+   *     skipped. Custom data is cleared on import.
    *
    * Accessibility
    *   - VM tab bar: role="tablist" + role="tab" + aria-selected + arrow keys.
@@ -3341,7 +3339,6 @@ loadUiState();
           </tbody></table>
         </div>`
       : '';
-
     host.innerHTML = `<div style="display:grid;grid-template-columns:1fr;gap:8px;">${smbBlock}${nfsBlock}</div>`;
   }
 
