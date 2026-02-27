@@ -155,6 +155,15 @@
       max-height: calc(100vh - 96px);
       overflow: auto;
     }
+
+    .share-field-slot {
+      min-height: 84px;
+    }
+
+    .share-field-slot[aria-hidden="true"] {
+      visibility: hidden;
+      pointer-events: none;
+    }
 </style>
 </head>
 <body>
@@ -174,8 +183,8 @@
           <li><strong>Validation:</strong> VM names and NIC names must be valid, unique, and within Azure resource name length limits before JSON can be exported.</li>
           <li><strong>Output:</strong> Generated ARM includes a shared VNet/subnet/NSG, plus per-VM NICs, optional public IPs, and VM resources. Ultra SSD disks trigger zonal placement.</li>
           <li><strong>Optional storage:</strong> You can optionally add SMB and/or NFS Azure Files resources. If enabled, the template adds storage accounts, shares, private endpoints, and outputs for mount paths.</li>
-          <li><strong>Custom data:</strong> Optional. When present, it is directly base64-encoded in ARM.</li>
-          <li><strong>Import JSON:</strong> Import a previously generated (or compatible) ARM template to re-populate the tool. VMs whose size or image is not in the catalog are skipped with a summary toast. Custom data cannot be reverse-decoded and is cleared on import.</li>
+          <li><strong>Custom data:</strong> Optional. When present, custom data is normalized with a shebang (if missing), optionally appends delayed reboot, and is base64-encoded for ARM.</li>
+          <li><strong>Import JSON:</strong> Import a previously generated (or compatible) ARM template to re-populate the tool. VMs whose size or image is not in the catalog are skipped with a summary toast. Custom data is cleared on import.</li>
           <li><strong>Persistence:</strong> Your VM configuration and active filters are auto-saved to localStorage and restored on page reload.</li>
           <li><strong>Keyboard:</strong> VM tabs support arrow-key navigation. The filter panel traps focus and closes with Escape. Screen reader announcements report filter result counts.</li>
         </ul>
@@ -195,7 +204,7 @@
             <input id="enableSmbStorage" type="checkbox" />
             <span class="muted" style="margin-top: 0;">Add SMB storage account + share</span>
           </div>
-          <div id="smbShareFieldWrap" style="display: none;">
+          <div id="smbShareFieldWrap" class="share-field-slot" aria-hidden="true">
             <label for="smbShareName">SMB share name</label>
             <input id="smbShareName" placeholder="smbshare" maxlength="63" />
             <div id="smbShareNameError" class="error-text"></div>
@@ -207,7 +216,7 @@
             <input id="enableNfsStorage" type="checkbox" />
             <span class="muted" style="margin-top: 0;">Add NFS storage account + share</span>
           </div>
-          <div id="nfsShareFieldWrap" style="display: none;">
+          <div id="nfsShareFieldWrap" class="share-field-slot" aria-hidden="true">
             <label for="nfsShareName">NFS share name</label>
             <input id="nfsShareName" placeholder="nfsshare" maxlength="63" />
             <div id="nfsShareNameError" class="error-text"></div>
@@ -215,6 +224,13 @@
         </div>
       </div>
       <div class="muted">Storage account names are auto-generated with <code class="inline">uniqueString()</code>. Only selected protocols are added to the ARM output.</div>
+
+      <div class="row" style="margin: 12px 0 8px; padding-top: 10px; border-top: 1px solid var(--border);">
+        <strong>Custom NSG rules</strong>
+        <button id="addNsgRuleBtn" type="button" style="font-size: 12px; padding: 5px 8px;">+ Add rule</button>
+      </div>
+      <div id="nsgRuleList"></div>
+      <div class="muted" id="noNsgRuleMsg">No custom rules. SSH from AzureCloud (port 22) is always included.</div>
     </div>
 
     <div class="grid">
@@ -367,6 +383,7 @@
    * =============================================================================
    * ARM Builder UI - Maintenance Guide
    * =============================================================================
+   *
    * Purpose
    *   Build a multi-VM ARM template from a constrained UI model.
    *
@@ -402,8 +419,8 @@
    *   - Event handlers call the minimum set of helpers needed for each action.
    *
    * Import
-   *   - importFromArmJson() parses an ARM template, matches VM sizes and images
-   *     to the catalogs, and builds VM models. Unrecognized sizes/images are
+  *   - importFromArmJson() parses an ARM template, matches VM sizes and images
+  *     to the catalogs, and builds VM models. Unrecognized sizes/images are
   *     skipped. Custom data is cleared on import.
    *
    * Accessibility
@@ -452,17 +469,28 @@
 
   /**
    * Encodes VM custom data for use in an ARM template's osProfile.customData field.
-   * Base64-encodes the raw content directly. If {@link rebootRequired} is true,
-   * appends a delayed reboot command before encoding.
+   * If the raw content does not start with a shebang line (e.g. #!/bin/bash),
+   * one is automatically prepended so the script executes correctly at boot.
+   * If {@link rebootRequired} is true, a delayed reboot command is appended to the
+   * raw content before base64 encoding is applied.
    * @param {string} text - The raw custom data content.
    * @param {boolean} rebootRequired - Whether to append a delayed reboot command.
    * @returns {string} Base64-encoded string ready for ARM customData, or '' if empty.
    */
   function encodeCustomDataForArm(text, rebootRequired) {
-    const raw = String(text || '').replace(/\r\n/g, '\n');
+    const raw = String(text || '');
     if (!raw.trim()) return '';
+    const normalizedRaw = raw.replace(/\r\n/g, '\n');
 
-    const payload = rebootRequired ? `${raw}\n\nsleep 60 && reboot &` : raw;
+    // Ensure the script has a shebang line. If the first line is not a shebang
+    // (e.g. #!/bin/bash, #!/bin/sh, #!/usr/bin/env python3), prepend #!/bin/bash.
+    const hasShebang = /^#!/.test(normalizedRaw.trimStart());
+    const withShebang = hasShebang ? normalizedRaw : `#!/bin/bash\n${normalizedRaw}`;
+
+    // Append reboot command once, before choosing encoding path.
+    const payload = rebootRequired
+      ? `${withShebang}\n\nsleep 60 && reboot &`
+      : withShebang;
     return toBase64Utf8(payload);
   }
 
@@ -493,6 +521,7 @@ const state = {
   sizeFilters: null,
   storageOptions: null,
   extraOptionsOpen: false,
+  customNsgRules: [],
   vms: null,
   activeVmIndex: 0,
   // Per-cycle caches (invalidated at the start of each render/updateOutput cycle)
@@ -662,6 +691,10 @@ function showDeployFlow(msg, seconds) {
     { key: 'rhel_raw_9_5_x64_gen1', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
       label: 'RHEL Raw 9.5 (Gen1) (RedHat:rhel-raw:9_5:latest)',
       ref: { publisher:'RedHat', offer:'rhel-raw', sku:'9_5', version:'latest' } },
+    
+    { key: 'rhel_ha_8_8_x64_gen1_latest', arch: 'x64', gen: 'Gen1', nvmeCapable: false, scsiCapable: true,
+      label: 'RHEL HA x86_64 (Gen1) (RedHat:RHEL-HA:8_8:latest)',
+      ref: { publisher:'RedHat', offer:'RHEL-HA', sku:'8_8', version:'latest' } },      
 
     { key: 'rhel_raw_9_raw_gen2_x64_gen2', arch: 'x64', gen: 'Gen2', nvmeCapable: true, scsiCapable: true,
       label: 'RHEL Raw 9 (Gen2) (RedHat:rhel-raw:9-raw-gen2:latest)',
@@ -844,6 +877,9 @@ function showDeployFlow(msg, seconds) {
   // - `tags.generations` constrains VM generation selection.
   // - `tags.diskControllersByGen` constrains controller selection by generation.
   // - `tags.diskSkuSupport` gates allowed data disk SKUs in the UI.
+  // - `tags.sharedDiskSupported` is informational only and must be verified
+  //   manually. Azure CLI (`az vm list-skus`) often does not return a reliable
+  //   SharedDiskSupported capability value.
   // - `tags.accelNetMode` controls NIC accelerated networking behavior
   //   ('required' | 'optional' | 'unsupported').
   // - `tags.ephemeralOsDiskSupported` is used by the size filter panel.
@@ -872,6 +908,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'unsupported',
       ephemeralOsDiskSupported: true,      
       maxNics: 3,
@@ -899,6 +936,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: true,      
       maxNics: 2,
@@ -922,6 +960,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: true,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: false,      
       maxNics: 2,
@@ -945,6 +984,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: false,
       maxNics: 2,
@@ -969,6 +1009,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'required',
       ephemeralOsDiskSupported: false,
       maxNics: 2,
@@ -993,6 +1034,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: false,
       maxNics: 2,
@@ -1004,6 +1046,9 @@ function showDeployFlow(msg, seconds) {
   // E-family (memory optimized)
   // -------------------------------------------------------------------------
   // Standard_E2bds_v5: Memory-optimized x64 with NVMe support on Gen2.
+  // NOTE: This is currently the only catalog entry with sharedDiskSupported=true.
+  //       When adding new sizes, verify shared disk support via Azure portal or docs
+  //       (az vm list-skus is unreliable for this capability).
   {
     name: 'Standard_E2bds_v5',
     tags: {
@@ -1020,6 +1065,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: true,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: true,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: true,
       maxNics: 2,
@@ -1043,6 +1089,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: false,
       maxNics: 2,
@@ -1067,6 +1114,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: true,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: true,      
       maxNics: 8,
@@ -1094,6 +1142,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: true,      
       maxNics: 2,
@@ -1121,6 +1170,7 @@ function showDeployFlow(msg, seconds) {
         PremiumV2_LRS: false,
         UltraSSD_LRS: true
       },
+      sharedDiskSupported: false,
       accelNetMode: 'optional',
       ephemeralOsDiskSupported: true,      
       maxNics: 4,
@@ -1290,7 +1340,8 @@ const sizeFilterMeta = {
  * Validates the sizeOptions catalog at startup.
  * Checks that every VM size entry has a unique `name`, valid `tags` structure
  * (architectures, generations, diskControllersByGen, diskSkuSupport, accelNetMode,
- * maxNics, maxDataDisks), and no unknown enum values. Throws an Error with a
+ * sharedDiskSupported, maxNics, maxDataDisks), and no unknown enum values.
+ * Throws an Error with a
  * detailed list of issues if any problems are found.
  * Called once on page load — if this throws, the UI will not start.
  * @param {Array<Object>} options - The sizeOptions array to validate.
@@ -1406,6 +1457,10 @@ function validateSizeOptionsConfig(options) {
 
     if (tags.ephemeralOsDiskSupported !== undefined && typeof tags.ephemeralOsDiskSupported !== 'boolean') {
       issues.push(`sizeOptions[${idx}] (${name || 'unknown'}) ephemeralOsDiskSupported must be boolean when provided`);
+    }
+
+    if (tags.sharedDiskSupported !== undefined && typeof tags.sharedDiskSupported !== 'boolean') {
+      issues.push(`sizeOptions[${idx}] (${name || 'unknown'}) sharedDiskSupported must be boolean when provided`);
     }
   });
 
@@ -1849,6 +1904,214 @@ function accelNetSupportedFor(vm) {
   }
 
   /**
+   * Returns whether the VM's current size supports Azure shared data disks.
+   * NOTE: Catalog value is maintained manually because Azure CLI capability data
+   * can be incomplete for SharedDiskSupported.
+   * @param {Object} vm - A VM model object with a `size` property.
+   * @returns {boolean} True when shared disk toggle should be available.
+   */
+  function sharedDiskSupportedFor(vm) {
+    const tags = sizeByName(vm.size).tags || {};
+    return !!tags.sharedDiskSupported;
+  }
+
+  /**
+   * Creates a readable shared-disk identifier for UI and ARM naming.
+   * @returns {string} New identifier like `shared-abc12345`.
+   */
+  function createSharedDiskId() {
+    return `shared-${String(uid()).slice(0, 8).toLowerCase()}`;
+  }
+
+  /**
+   * Converts a shared disk id into a safe ARM disk resource name.
+   * @param {string} sharedDiskId - Logical shared disk id.
+   * @returns {string} ARM-safe disk name.
+   */
+  function sharedDiskArmName(sharedDiskId) {
+    const raw = String(sharedDiskId || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    return (raw || `shared-${String(uid()).slice(0, 8).toLowerCase()}`).slice(0, 63);
+  }
+
+  /**
+   * Builds a map of shared disk ids to their references across all VMs.
+   * @returns {Map<string, {id:string, sku:string, sizeGB:number, refs:Array<{vm:Object, vmIdx:number, disk:Object, diskIdx:number}>}>}
+   */
+  function collectSharedDiskCatalog() {
+    const catalog = new Map();
+    vms.forEach((vm, vmIdx) => {
+      (vm.disks || []).forEach((disk, diskIdx) => {
+        if (!disk || !disk.sharedEnabled) return;
+        const id = String(disk.sharedDiskId || '').trim();
+        if (!id) return;
+        if (!catalog.has(id)) {
+          catalog.set(id, {
+            id,
+            sku: String(disk.sku || ''),
+            sizeGB: Number(disk.sizeGB || LIMITS.DEFAULT_DATA_DISK_GB),
+            refs: []
+          });
+        }
+        catalog.get(id).refs.push({ vm, vmIdx, disk, diskIdx });
+      });
+    });
+    return catalog;
+  }
+
+  /**
+   * Normalizes shared-disk settings globally (cross-VM):
+   * - shared toggle is allowed only on sizes with sharedDiskSupported=true
+   * - shared disk ids must be present when enabled
+   * - each shared disk can be attached to at most 2 VMs
+   * - secondary attachments inherit SKU/size from the primary attachment
+   */
+  function normalizeSharedDisksGlobal() {
+    vms.forEach(vm => {
+      const vmSupportsShared = sharedDiskSupportedFor(vm);
+      (vm.disks || []).forEach(d => {
+        d.sharedEnabled = !!d.sharedEnabled;
+        d.sharedDiskId = String(d.sharedDiskId || '').trim();
+        if (!vmSupportsShared || !d.sharedEnabled) {
+          d.sharedEnabled = false;
+          d.sharedDiskId = '';
+          return;
+        }
+        if (!d.sharedDiskId) {
+          d.sharedEnabled = false;
+          d.sharedDiskId = '';
+        }
+      });
+    });
+
+    // Cross-VM pass: enforce max 2 attachments and sync properties.
+    const catalog = collectSharedDiskCatalog();
+    catalog.forEach(entry => {
+      // Evict any attachments beyond the 2-VM limit (maxShares=2).
+      // Excess refs are reverted to normal (non-shared) disks.
+      entry.refs.slice(2).forEach(ref => {
+        ref.disk.sharedEnabled = false;
+        ref.disk.sharedDiskId = '';
+      });
+
+      // The first attachment is the "primary" — it defines the canonical SKU and size.
+      // The second attachment (if present) inherits those properties so both VMs
+      // reference the same physical managed disk characteristics.
+      const primary = entry.refs[0];
+      if (!primary || !primary.disk) return;
+      const baseSku = String(primary.disk.sku || 'StandardSSD_LRS');
+      const baseSize = Number(primary.disk.sizeGB || LIMITS.DEFAULT_DATA_DISK_GB);
+      entry.refs.slice(1, 2).forEach(ref => {
+        ref.disk.sku = baseSku;
+        ref.disk.sizeGB = baseSize;
+      });
+    });
+  }
+
+  /**
+   * Returns a validation error for shared disk settings on a single disk.
+   * @param {Object} vm - Parent VM.
+   * @param {Object} disk - Disk model.
+   * @returns {string} Error message or empty string.
+   */
+  function sharedDiskError(vm, disk) {
+    if (!disk || !disk.sharedEnabled) return '';
+    if (!sharedDiskSupportedFor(vm)) return `VM size ${vm.size} does not support shared disks.`;
+    if (!String(disk.sharedDiskId || '').trim()) return 'Shared disk is enabled but no shared disk id is set.';
+    return '';
+  }
+
+  /**
+   * Checks whether any VM has invalid shared-disk configuration.
+   * @returns {boolean} True when any shared-disk validation error exists.
+   */
+  function hasAnySharedDiskValidationErrors() {
+    const catalog = collectSharedDiskCatalog();
+    for (const entry of catalog.values()) {
+      // A shared disk id with >2 attachments is always invalid (maxShares=2).
+      if ((entry.refs || []).length > 2) return true;
+    }
+    return vms.some(vm => (vm.disks || []).some(d => !!sharedDiskError(vm, d)));
+  }
+
+  /**
+   * Returns attachable shared disk entries for a VM (not already attached to this VM,
+   * and with capacity < 2 attachments).
+   * @param {Object} vm - Target VM.
+   * @returns {Array<Object>} Attachable shared disk catalog entries.
+   */
+  function attachableSharedDisksForVm(vm) {
+    const catalog = collectSharedDiskCatalog();
+    return Array.from(catalog.values()).filter((entry) => {
+      const refs = entry.refs || [];
+      if (!refs.length || refs.length >= 2) return false;
+      return !refs.some(ref => ref.vm === vm);
+    });
+  }
+
+  /**
+   * Attaches the first available shared disk to the target VM as a new data disk row.
+   * @param {Object} vm - Target VM.
+   */
+  function attachFirstSharedDiskToVm(vm) {
+    if (!vm || !sharedDiskSupportedFor(vm)) return;
+    const attachable = attachableSharedDisksForVm(vm);
+    const entry = attachable[0];
+    if (!entry) return;
+
+    vm.disks = vm.disks || [];
+    if ((vm.disks || []).length >= maxDataDisksFor(vm)) {
+      showToast('Data disk limit reached', `VM size '${vm.size}' supports up to ${maxDataDisksFor(vm)} data disk(s).`);
+      return;
+    }
+
+    vm.disks.push({
+      sizeGB: Number(entry.sizeGB || LIMITS.DEFAULT_DATA_DISK_GB),
+      sku: String(entry.sku || defaultDiskSkuFor(vm)),
+      sharedEnabled: true,
+      sharedDiskId: String(entry.id || '')
+    });
+  }
+
+  /**
+   * Converts all shared disks on a VM into normal disks by clearing shared flags.
+   * Keeps disk SKU/size unchanged.
+   * @param {Object} vm - VM whose disks should be converted.
+   * @returns {number} Count of converted disks.
+   */
+  function convertSharedDisksToNormalOnVm(vm) {
+    if (!vm) return 0;
+    let converted = 0;
+    (vm.disks || []).forEach((d) => {
+      if (!d || !d.sharedEnabled) return;
+      d.sharedEnabled = false;
+      d.sharedDiskId = '';
+      converted += 1;
+    });
+    return converted;
+  }
+
+  /**
+   * Synchronizes SKU/size across all attachments of the same shared disk id.
+   * This allows editing from either the source or secondary VM disk row.
+   * @param {string} sharedDiskId - Shared disk logical id.
+   * @param {Object} sourceDisk - Disk carrying latest SKU/size values.
+   */
+  function syncSharedDiskProperties(sharedDiskId, sourceDisk) {
+    const id = String(sharedDiskId || '').trim();
+    if (!id || !sourceDisk) return;
+    const catalog = collectSharedDiskCatalog();
+    const entry = catalog.get(id);
+    if (!entry) return;
+    const nextSku = String(sourceDisk.sku || 'StandardSSD_LRS');
+    const nextSize = Number(sourceDisk.sizeGB || LIMITS.DEFAULT_DATA_DISK_GB);
+    (entry.refs || []).slice(0, 2).forEach(ref => {
+      if (!ref || !ref.disk) return;
+      ref.disk.sku = nextSku;
+      ref.disk.sizeGB = nextSize;
+    });
+  }
+
+  /**
    * Returns an error message if a VM's NIC count exceeds its size's maxNics limit.
    * @param {Object} vm - The VM model object.
    * @returns {string} An error message, or '' if within limits.
@@ -2055,6 +2318,9 @@ function loadUiState() {
     if (typeof parsed.extraOptionsOpen === 'boolean') {
       state.extraOptionsOpen = parsed.extraOptionsOpen;
     }
+    if (Array.isArray(parsed.customNsgRules)) {
+      state.customNsgRules = parsed.customNsgRules;
+    }
     if (Number.isInteger(parsed.activeVmIndex) && parsed.activeVmIndex >= 0) {
       state.activeVmIndex = parsed.activeVmIndex;
     }
@@ -2076,6 +2342,7 @@ function saveUiState() {
       sizeFilters: state.sizeFilters,
       storageOptions: state.storageOptions,
       extraOptionsOpen: state.extraOptionsOpen,
+      customNsgRules: state.customNsgRules,
       activeVmIndex: state.activeVmIndex
     };
     localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(payload));
@@ -2116,8 +2383,8 @@ loadUiState();
    *   - Per-VM resources: NICs, optional public IPs, and VM resources.
    *   - Optional storage resources (SMB/NFS): storage accounts, file shares,
    *     private endpoints, private DNS zones/links, and outputs.
-   *   - Ultra SSD handling: zonal placement and ultraSSDEnabled when applicable.
-   *   - Custom data encoding: direct base64.
+  *   - Ultra/PremiumV2 handling: zonal placement and ultraSSDEnabled when applicable.
+  *   - Custom data encoding: base64 with shebang normalization and optional delayed reboot.
    *
    * @param {Array<Object>} vms - Array of sanitized VM model objects.
    * @param {Object} storageOptions - Storage configuration from state.storageOptions.
@@ -2126,7 +2393,50 @@ loadUiState();
   function generateArmTemplate(vms, storageOptions) {
     const imageMap = Object.fromEntries(imageOptions.map(o => [o.key, o.ref]));
     const locationExpr = "[resourceGroup().location]";
-    const hasAnyUltraSsdDataDisk = (vms || []).some(vm => (vm.disks || []).some(d => d && d.sku === 'UltraSSD_LRS'));
+
+    // ── Shared Disk ARM Catalog ──────────────────────────────────────────
+    // Build a local catalog of shared disks for ARM generation.
+    // Unlike collectSharedDiskCatalog() (used for UI), this version adds
+    // `armName` (deployment-safe resource name) and `requiresZonalPlacement`
+    // (whether the disk resource needs an availability zone).
+    // Each shared disk becomes a standalone Microsoft.Compute/disks resource
+    // with maxShares=2, and each VM references it via createOption: "Attach".
+    const sharedDiskCatalog = new Map();
+    (vms || []).forEach((vm) => {
+      (vm.disks || []).forEach((d) => {
+        if (!d || !d.sharedEnabled || !d.sharedDiskId) return;
+        if (!sharedDiskSupportedFor(vm)) return;
+        const id = String(d.sharedDiskId || '').trim();
+        if (!id) return;
+        if (!sharedDiskCatalog.has(id)) {
+          sharedDiskCatalog.set(id, {
+            id,
+            armName: sharedDiskArmName(id),
+            sku: String(d.sku || 'StandardSSD_LRS'),
+            sizeGB: Number(d.sizeGB || LIMITS.DEFAULT_DATA_DISK_GB),
+            refs: []
+          });
+        }
+        const entry = sharedDiskCatalog.get(id);
+        if ((entry.refs || []).length < 2) {
+          entry.refs.push({ vmName: vm.name, disk: d });
+        }
+      });
+    });
+
+    // Shared disks require zonal placement when:
+    //   (a) the disk is attached to 2 VMs (both must be in the same zone), or
+    //   (b) the disk SKU is UltraSSD_LRS or PremiumV2_LRS (always zonal).
+    sharedDiskCatalog.forEach((entry) => {
+      entry.requiresZonalPlacement = (entry.refs || []).length >= 2 || entry.sku === 'UltraSSD_LRS' || entry.sku === 'PremiumV2_LRS';
+    });
+
+    // Determine if the template needs the ultraAvailabilityZone parameter.
+    // This is true if any VM has Ultra/PremiumV2 data disks OR any shared disk
+    // requires zonal placement (multi-VM attachment or zonal SKU).
+    const hasAnyZonalDataDiskRequirement =
+      (vms || []).some(vm => (vm.disks || []).some(d => d && (d.sku === 'UltraSSD_LRS' || d.sku === 'PremiumV2_LRS')))
+      || Array.from(sharedDiskCatalog.values()).some(entry => !!entry.requiresZonalPlacement);
     const storageCfg = normalizeStorageOptions(storageOptions);
     const includeSmb = !!storageCfg.smbEnabled;
     const includeNfs = !!storageCfg.nfsEnabled;
@@ -2143,7 +2453,7 @@ loadUiState();
           "defaultValue": "1",
           "allowedValues": ["1", "2", "3"],
           "metadata": {
-            "description": "Availability Zone used when UltraSSD_LRS requires zonal placement."
+            "description": "Availability Zone used when UltraSSD_LRS or PremiumV2_LRS requires zonal placement."
           }
         }
       },
@@ -2176,9 +2486,69 @@ loadUiState();
       template.variables.privateDnsZoneName = "privatelink.file.core.windows.net";
     }
 
-    if (!hasAnyUltraSsdDataDisk) {
+    if (!hasAnyZonalDataDiskRequirement) {
       delete template.parameters.ultraAvailabilityZone;
     }
+
+    // ── Emit standalone Microsoft.Compute/disks resources for shared disks ──
+    // Each shared disk becomes an independent managed disk with maxShares=2,
+    // allowing up to 2 VMs to attach it simultaneously. VMs reference these
+    // disks via createOption: "Attach" + managedDisk.id (see per-VM section below).
+    // Zonal placement is conditional: required for Ultra/PremiumV2 SKUs or
+    // when the disk is shared across 2 VMs (both must be in the same zone).
+    sharedDiskCatalog.forEach((entry) => {
+      const diskResource = {
+        "type": "Microsoft.Compute/disks",
+        "apiVersion": "2023-04-02",
+        "name": entry.armName,
+        "location": locationExpr,
+        "sku": { "name": entry.sku },
+        "properties": {
+          "creationData": { "createOption": "Empty" },
+          "diskSizeGB": entry.sizeGB,
+          "maxShares": 2
+        }
+      };
+      if (entry.requiresZonalPlacement) {
+        diskResource.zones = ["[parameters('ultraAvailabilityZone')]"];
+      }
+      template.resources.push(diskResource);
+    });
+
+    // Build NSG security rules: default SSH + custom rules from Extra options
+    const securityRules = [
+      {
+        "name": "inbound_ssh_azurecloud",
+        "properties": {
+          "access": "Allow",
+          "protocol": "Tcp",
+          "direction": "Inbound",
+          "priority": 100,
+          "sourceAddressPrefix": "AzureCloud",
+          "sourcePortRange": "*",
+          "destinationAddressPrefix": "*",
+          "destinationPortRange": "22"
+        }
+      }
+    ];
+
+    (state.customNsgRules || []).forEach((rule, idx) => {
+      const port = String(rule.port || '').trim();
+      if (!port) return;
+      securityRules.push({
+        "name": `inbound_custom_${idx + 1}_${(rule.protocol || 'tcp').toLowerCase()}_${port.replace(/[^0-9-]/g, '')}`,
+        "properties": {
+          "access": "Allow",
+          "protocol": rule.protocol || "Tcp",
+          "direction": "Inbound",
+          "priority": 200 + idx,
+          "sourceAddressPrefix": rule.source || "AzureCloud",
+          "sourcePortRange": "*",
+          "destinationAddressPrefix": "*",
+          "destinationPortRange": port
+        }
+      });
+    });
 
     template.resources.push({
       "type": "Microsoft.Network/networkSecurityGroups",
@@ -2186,21 +2556,7 @@ loadUiState();
       "name": "[variables('nsgName')]",
       "location": locationExpr,
       "properties": {
-        "securityRules": [
-          {
-            "name": "inbound_ssh_azurecloud",
-            "properties": {
-              "access": "Allow",
-              "protocol": "Tcp",
-              "direction": "Inbound",
-              "priority": 100,
-              "sourceAddressPrefix": "AzureCloud",
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "22"
-            }
-          }
-        ]
+        "securityRules": securityRules
       }
     });
 
@@ -2435,6 +2791,18 @@ loadUiState();
       const nics = (vm.nics && vm.nics.length) ? vm.nics : [ defaultNic(0) ];
       const allowAccel = accelNetSupportedFor(vm);
       const hasUltraSsdDataDisk = (vm.disks || []).some(d => d && d.sku === 'UltraSSD_LRS');
+      const hasPremiumV2DataDisk = (vm.disks || []).some(d => d && d.sku === 'PremiumV2_LRS');
+      // A VM also requires zonal placement if any of its attached shared disks
+      // are flagged requiresZonalPlacement (multi-VM attachment or zonal SKU).
+      // This ensures the VM, its PIP, and the shared disk are all zone-aligned.
+      const hasSharedDiskRequiringZone = (vm.disks || []).some(d => {
+        const sharedId = String((d && d.sharedDiskId) || '').trim();
+        if (!(d && d.sharedEnabled && sharedId)) return false;
+        const entry = sharedDiskCatalog.get(sharedId);
+        const isAttachedRef = !!(entry && (entry.refs || []).some(ref => ref.disk === d && ref.vmName === vm.name));
+        return !!(entry && isAttachedRef && entry.requiresZonalPlacement);
+      });
+      const requiresZonalPlacement = hasUltraSsdDataDisk || hasPremiumV2DataDisk || hasSharedDiskRequiringZone;
 
       // Per NIC: optional PIP + NIC
       nics.forEach(nic => {
@@ -2455,8 +2823,8 @@ loadUiState();
               "dnsSettings": { "domainNameLabel": dnsLabel }
             }
           };
-          // Ultra disks require zonal VM placement for these sizes; keep PIP aligned.
-          if (hasUltraSsdDataDisk) pipResource.zones = ["[parameters('ultraAvailabilityZone')]"];
+          // Ultra/PremiumV2 data disks require zonal VM placement; keep PIP aligned.
+          if (requiresZonalPlacement) pipResource.zones = ["[parameters('ultraAvailabilityZone')]"];
           template.resources.push(pipResource);
           template.outputs.vmFqdns.value.push(
             `[reference(resourceId('Microsoft.Network/publicIPAddresses', '${pipName}')).dnsSettings.fqdn]`
@@ -2496,15 +2864,37 @@ loadUiState();
       const customDataRaw = String(vm.customData || '');
       const encodedCustomData = encodeCustomDataForArm(customDataRaw, !!vm.rebootRequired);
 
-      const storageProfile = {
-        "imageReference": imageMap[vm.imageKey],
-        "osDisk": { "createOption": "FromImage", "managedDisk": { "storageAccountType": "StandardSSD_LRS" } },
-        "dataDisks": (vm.disks || []).map((d, lun) => ({
+      // Build ARM data disk entries.
+      // Shared disks use createOption: "Attach" with a resourceId reference to the
+      // standalone Microsoft.Compute/disks resource (and add it to vmDepends).
+      // Normal disks use createOption: "Empty" with inline size and SKU.
+      const vmDataDisks = (vm.disks || []).map((d, lun) => {
+        const sharedId = String((d && d.sharedDiskId) || '').trim();
+        const sharedEntry = (d && d.sharedEnabled && sharedId) ? sharedDiskCatalog.get(sharedId) : null;
+        const isAttachedRef = !!(sharedEntry && (sharedEntry.refs || []).some(ref => ref.disk === d && ref.vmName === vm.name));
+        if (sharedEntry && isAttachedRef) {
+          // Shared disk: reference the pre-created managed disk resource.
+          const diskRef = `[resourceId('Microsoft.Compute/disks', '${sharedEntry.armName}')]`;
+          if (!vmDepends.includes(diskRef)) vmDepends.push(diskRef);
+          return {
+            "lun": lun,
+            "createOption": "Attach",
+            "managedDisk": { "id": diskRef }
+          };
+        }
+        // Normal disk: create inline with the VM.
+        return {
           "lun": lun,
           "createOption": "Empty",
           "diskSizeGB": d.sizeGB,
           "managedDisk": { "storageAccountType": d.sku }
-        }))
+        };
+      });
+
+      const storageProfile = {
+        "imageReference": imageMap[vm.imageKey],
+        "osDisk": { "createOption": "FromImage", "managedDisk": { "storageAccountType": "StandardSSD_LRS" } },
+        "dataDisks": vmDataDisks
       };
       // diskControllerType is valid only for Generation 2 VM/image combinations.
       if (vm.diskControllerType && vm.gen === 'Gen2' && selectedImageGen === 'Gen2') {
@@ -2537,8 +2927,8 @@ loadUiState();
         "dependsOn": vmDepends,
         "properties": vmProperties
       };
-      // Ultra disks require a zonal VM for these SKUs (1/2/3). Default to zone 1.
-      if (hasUltraSsdDataDisk) vmResource.zones = ["[parameters('ultraAvailabilityZone')]"];
+      // Ultra/PremiumV2 data disks require a zonal VM (1/2/3). Default to zone 1.
+      if (requiresZonalPlacement) vmResource.zones = ["[parameters('ultraAvailabilityZone')]"];
 
       template.resources.push(vmResource);
     });
@@ -3085,21 +3475,89 @@ loadUiState();
     diskList.innerHTML = '';
     const disks = vm.disks || [];
     const supportedSkus = supportedDiskSkusFor(vm);
-    $('noDiskMsg').style.display = disks.length ? 'none' : 'block';
+
+    // ── Shared disk UI state ─────────────────────────────────────────────
+    // vmSupportsShared: whether the VM size's catalog entry has sharedDiskSupported=true.
+    // sharedCatalog: cross-VM map of all shared disk IDs → { refs, sku, sizeGB }.
+    // attachableShared: shared disks from other VMs that this VM can still attach to
+    //                   (i.e., disks with <2 attachments and not already on this VM).
+    const vmSupportsShared = sharedDiskSupportedFor(vm);
+    const noDiskMsg = $('noDiskMsg');
     const diskLimitErr = diskAttachmentCountError(vm);
+    const sharedCatalog = collectSharedDiskCatalog();
+    const attachableShared = attachableSharedDisksForVm(vm);
+
+    // ── "Attach shared disk (N)" button ──────────────────────────────────
+    // Dynamically created once and inserted before the "Add disk" button.
+    // Shown only when the VM size supports shared disks AND there are
+    // available shared disks from other VMs to attach to. Clicking it
+    // adds a new disk row pre-configured as a secondary attachment to the
+    // first available shared disk.
+    const addDiskBtn = $('addDiskBtn');
+    if (addDiskBtn) {
+      let attachBtn = $('attachSharedDiskBtn');
+      if (!attachBtn) {
+        attachBtn = document.createElement('button');
+        attachBtn.id = 'attachSharedDiskBtn';
+        attachBtn.type = 'button';
+        attachBtn.style.marginRight = '8px';
+        addDiskBtn.parentElement && addDiskBtn.parentElement.insertBefore(attachBtn, addDiskBtn);
+      }
+      const showAttachBtn = vmSupportsShared && attachableShared.length > 0;
+      attachBtn.style.display = showAttachBtn ? '' : 'none';
+      attachBtn.textContent = `Attach shared disk (${attachableShared.length})`;
+      attachBtn.disabled = (vm.disks || []).length >= maxDataDisksFor(vm);
+      attachBtn.onclick = () => {
+        attachFirstSharedDiskToVm(vm);
+        renderDisks(vm);
+        updateNicDiskButtons(vm);
+        updateOutput();
+      };
+    }
+
+    // Context-aware "no disks" message:
+    //   1. If shared disks exist elsewhere but this VM size doesn't support them → explain.
+    //   2. If shared disks exist and this VM size supports them → guide user to attach.
+    //   3. Otherwise → plain "No data disks."
+    if (noDiskMsg) {
+      noDiskMsg.style.display = disks.length ? 'none' : 'block';
+      if (!disks.length) {
+        const hasExistingShared = Array.from(sharedCatalog.values()).some(entry => (entry.refs || []).length > 0);
+        if (hasExistingShared && !vmSupportsShared) {
+          noDiskMsg.textContent = `No data disks. Shared disks exist in other VMs, but VM size '${vm.size}' has sharedDiskSupported=false.`;
+        } else if (hasExistingShared && vmSupportsShared) {
+          noDiskMsg.textContent = 'No data disks. Use "Attach shared disk" to add one, or use Add disk for a new local disk.';
+        } else {
+          noDiskMsg.textContent = 'No data disks.';
+        }
+      }
+    }
 
     disks.forEach((d, di) => {
       const box = document.createElement('div');
       box.className = 'box';
       const diskErrText = diskSizeError(d);
+      const sharedErrText = sharedDiskError(vm, d);
 
       const grid = document.createElement('div');
       grid.className = 'grid3';
 
+      // Shared disk state for this disk row. Three mutually exclusive states:
+      //   - Not shared: sharedEntry is null.
+      //   - Primary: this disk is the first (defining) attachment — controls SKU/size.
+      //   - Secondary: this disk is attached to an existing shared disk from another VM.
+      const sharedEntry = d.sharedEnabled && d.sharedDiskId ? sharedCatalog.get(d.sharedDiskId) : null;
+      const isSharedPrimary = !!(sharedEntry && sharedEntry.refs && sharedEntry.refs[0] && sharedEntry.refs[0].disk === d);
+      const isSharedSecondary = !!(sharedEntry && sharedEntry.refs && sharedEntry.refs.length > 0 && !isSharedPrimary);
+
       const sizeWrap = document.createElement('div');
       sizeWrap.innerHTML = `<label>Size (GB)</label><input type="number" min="2" value="${d.sizeGB}" />`;
+      const sizeInput = sizeWrap.querySelector('input');
       sizeWrap.querySelector('input').oninput = (e) => {
         d.sizeGB = Number(e.target.value || 0);
+        if (d.sharedEnabled && d.sharedDiskId) {
+          syncSharedDiskProperties(d.sharedDiskId, d);
+        }
         const errText = diskSizeError(d);
         const errEl = box.querySelector('.disk-line-error');
         if (errEl) {
@@ -3118,6 +3576,9 @@ loadUiState();
       skuSel.value = d.sku;
       skuSel.onchange = (e) => {
         d.sku = e.target.value;
+        if (d.sharedEnabled && d.sharedDiskId) {
+          syncSharedDiskProperties(d.sharedDiskId, d);
+        }
         const errText = diskSizeError(d);
         const errEl = box.querySelector('.disk-line-error');
         if (errEl) {
@@ -3141,16 +3602,151 @@ loadUiState();
       grid.appendChild(rmBtn);
 
       box.appendChild(grid);
+
+      // ── Shared disk controls (shown only if VM size supports shared disks) ──
+      // "Enable shared disk" → creates a new shared disk ID and marks the disk shared.
+      // "Disable shared disk" → removes this disk row entirely. If no other VM
+      //   references the shared disk ID, the shared disk resource disappears
+      //   (shared disks are derived from current attachments, not stored separately).
+      if (vmSupportsShared) {
+        const sharedWrap = document.createElement('div');
+        sharedWrap.style.marginTop = '8px';
+
+        const sharedToggleBtn = document.createElement('button');
+        sharedToggleBtn.type = 'button';
+        sharedToggleBtn.textContent = d.sharedEnabled ? 'Disable shared disk' : 'Enable shared disk';
+        sharedToggleBtn.onclick = () => {
+          // Disable shared disk = detach it from this VM (remove this disk row).
+          // If no other VM references the shared disk id, it disappears automatically
+          // because shared disk resources are derived from current VM attachments.
+          if (d.sharedEnabled) {
+            disks.splice(di, 1);
+            renderDisks(vm);
+            updateNicDiskButtons(vm);
+            updateOutput();
+            return;
+          }
+
+          d.sharedEnabled = true;
+          if (!d.sharedDiskId) d.sharedDiskId = createSharedDiskId();
+          renderDisks(vm);
+          updateOutput();
+        };
+        sharedWrap.appendChild(sharedToggleBtn);
+
+        // Shared disk assignment dropdown. Options:
+        //   1. "Create new shared disk" — generates a fresh shared disk ID.
+        //   2. Current disk ID (if already shared) — shows source/attached label.
+        //   3. Available shared disks from other VMs with <2 attachments.
+        // Selecting an existing shared disk copies its SKU/size to this disk.
+        const selectorWrap = document.createElement('div');
+        selectorWrap.style.marginTop = '6px';
+        selectorWrap.style.display = d.sharedEnabled ? '' : 'none';
+        const selLabel = document.createElement('label');
+        selLabel.textContent = 'Shared disk assignment';
+        const sharedSel = document.createElement('select');
+
+        const newOpt = document.createElement('option');
+        newOpt.value = '__new__';
+        newOpt.textContent = 'Create new shared disk';
+        sharedSel.appendChild(newOpt);
+
+        if (d.sharedEnabled && d.sharedDiskId) {
+          const currentOpt = document.createElement('option');
+          currentOpt.value = d.sharedDiskId;
+          if (isSharedSecondary) {
+            currentOpt.textContent = `Attached to ${d.sharedDiskId} (using shared disk)`;
+          } else {
+            currentOpt.textContent = `Using ${d.sharedDiskId} (source shared disk)`;
+          }
+          sharedSel.appendChild(currentOpt);
+        }
+
+        for (const [id, entry] of sharedCatalog.entries()) {
+          if (!id || id === d.sharedDiskId) continue;
+          const used = (entry.refs || []).length;
+          if (used >= 2) continue;
+          const o = document.createElement('option');
+          o.value = id;
+          o.textContent = `Attach to ${id} (${entry.sku}, ${entry.sizeGB} GB, ${used}/2 attached)`;
+          sharedSel.appendChild(o);
+        }
+
+        let selectedValue = '__new__';
+        if (d.sharedEnabled && d.sharedDiskId) {
+          selectedValue = d.sharedDiskId;
+        }
+        sharedSel.value = selectedValue;
+
+        sharedSel.onchange = (e) => {
+          const selectedId = String(e.target.value || '__new__');
+          if (selectedId === '__new__') {
+            d.sharedEnabled = true;
+            d.sharedDiskId = createSharedDiskId();
+          } else {
+            const target = sharedCatalog.get(selectedId);
+            if (target && (target.refs || []).length < 2) {
+              d.sharedEnabled = true;
+              d.sharedDiskId = selectedId;
+              d.sku = target.sku;
+              d.sizeGB = Number(target.sizeGB || d.sizeGB);
+            }
+          }
+          renderDisks(vm);
+          updateOutput();
+        };
+
+        selectorWrap.appendChild(selLabel);
+        selectorWrap.appendChild(sharedSel);
+        sharedWrap.appendChild(selectorWrap);
+
+        // Primary attachment info: shows shared disk ID, attachment count (N/2), and VM names.
+        if (d.sharedEnabled && d.sharedDiskId && isSharedPrimary) {
+          const sourceInfo = document.createElement('div');
+          sourceInfo.className = 'muted';
+          sourceInfo.style.marginTop = '6px';
+          const attachedCount = sharedEntry && sharedEntry.refs ? sharedEntry.refs.length : 1;
+          const vmNames = sharedEntry && sharedEntry.refs
+            ? sharedEntry.refs.map(ref => String((ref.vm && ref.vm.name) || '').trim()).filter(Boolean)
+            : [];
+          sourceInfo.textContent = `Shared disk name: ${d.sharedDiskId} (${attachedCount}/2 attached). VMs: ${vmNames.join(', ') || vm.name}.`;
+          sharedWrap.appendChild(sourceInfo);
+        }
+
+        // Secondary attachment info: shows which shared disk this is attached to,
+        // the VM names sharing it, and a note that SKU/size edits sync to both VMs.
+        if (isSharedSecondary && sharedEntry) {
+          const inherited = document.createElement('div');
+          inherited.className = 'muted';
+          inherited.style.marginTop = '6px';
+          const vmNames = sharedEntry.refs
+            ? sharedEntry.refs.map(ref => String((ref.vm && ref.vm.name) || '').trim()).filter(Boolean)
+            : [];
+          inherited.textContent = `Attached to ${sharedEntry.id}. VMs: ${vmNames.join(', ') || vm.name}. Changes to SKU/size are synchronized across both VMs.`;
+          sharedWrap.appendChild(inherited);
+        }
+
+        box.appendChild(sharedWrap);
+      }
+
       const lineError = document.createElement('div');
       lineError.className = 'error-text disk-line-error';
       lineError.textContent = diskErrText;
       lineError.style.display = diskErrText ? 'block' : 'none';
       box.appendChild(lineError);
 
+      // Shared disk errors are shown separately from disk size/SKU errors
+      // because they represent cross-VM configuration issues (e.g., unsupported size).
+      const sharedLineError = document.createElement('div');
+      sharedLineError.className = 'error-text disk-shared-line-error';
+      sharedLineError.textContent = sharedErrText;
+      sharedLineError.style.display = sharedErrText ? 'block' : 'none';
+      box.appendChild(sharedLineError);
+
       const lineFix = document.createElement('div');
       lineFix.className = 'error-text disk-line-fix';
-      lineFix.textContent = 'Fix data disk validation errors before generating the ARM template.';
-      lineFix.style.display = diskErrText ? 'block' : 'none';
+      lineFix.textContent = 'Fix data disk/shared disk validation errors before generating the ARM template.';
+      lineFix.style.display = (diskErrText || sharedErrText) ? 'block' : 'none';
       box.appendChild(lineFix);
 
       diskList.appendChild(box);
@@ -3166,8 +3762,8 @@ loadUiState();
 
   /**
    * Syncs the Extra options storage panel UI with the current storage options state.
-   * Updates checkbox states, share name input values, disabled states, and validation errors.
-   * Called after any storage option change.
+  * Updates checkbox states, share name input values, disabled states, and
+  * validation errors. Called after any storage option change.
    */
   function renderStorageSection() {
     state.storageOptions = normalizeStorageOptions(state.storageOptions);
@@ -3187,8 +3783,8 @@ loadUiState();
     enableSmb.checked = !!cfg.smbEnabled;
     enableNfs.checked = !!cfg.nfsEnabled;
 
-    smbWrap.style.display = cfg.smbEnabled ? 'block' : 'none';
-    nfsWrap.style.display = cfg.nfsEnabled ? 'block' : 'none';
+    smbWrap.setAttribute('aria-hidden', cfg.smbEnabled ? 'false' : 'true');
+    nfsWrap.setAttribute('aria-hidden', cfg.nfsEnabled ? 'false' : 'true');
 
     smbShare.value = cfg.smbShareName;
     nfsShare.value = cfg.nfsShareName;
@@ -3198,6 +3794,67 @@ loadUiState();
     const errs = storageShareErrors();
     smbErr.textContent = errs.smb;
     nfsErr.textContent = errs.nfs;
+  }
+
+  /**
+   * Renders the custom NSG rules list in the Extra options panel.
+   * Each rule has protocol (TCP/UDP), destination port, and source (AzureCloud/Internet)
+   * dropdowns/inputs with inline remove buttons. Rules are persisted to localStorage.
+   */
+  function renderCustomNsgRules() {
+    const list = $('nsgRuleList');
+    const noMsg = $('noNsgRuleMsg');
+    if (!list || !noMsg) return;
+
+    const rules = state.customNsgRules || [];
+    noMsg.style.display = rules.length ? 'none' : 'block';
+    list.innerHTML = '';
+
+    rules.forEach((rule, idx) => {
+      const box = document.createElement('div');
+      box.className = 'box';
+      box.style.marginTop = '6px';
+
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;';
+
+      const protoWrap = document.createElement('div');
+      protoWrap.innerHTML = '<label>Protocol</label>';
+      const protoSel = document.createElement('select');
+      ['Tcp', 'Udp'].forEach(p => { const o = document.createElement('option'); o.value = p; o.textContent = p.toUpperCase(); protoSel.appendChild(o); });
+      protoSel.value = rule.protocol || 'Tcp';
+      protoSel.onchange = (e) => { rule.protocol = e.target.value; updateOutput(); };
+      protoWrap.appendChild(protoSel);
+
+      const portWrap = document.createElement('div');
+      portWrap.innerHTML = '<label>Destination port</label>';
+      const portInput = document.createElement('input');
+      portInput.value = String(rule.port || '');
+      portInput.placeholder = '80 or 8080-8090';
+      portInput.oninput = (e) => { rule.port = e.target.value.trim(); updateOutput(); };
+      portWrap.appendChild(portInput);
+
+      const srcWrap = document.createElement('div');
+      srcWrap.innerHTML = '<label>Source</label>';
+      const srcSel = document.createElement('select');
+      ['AzureCloud', 'Internet'].forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; srcSel.appendChild(o); });
+      srcSel.value = rule.source || 'AzureCloud';
+      srcSel.onchange = (e) => { rule.source = e.target.value; updateOutput(); };
+      srcWrap.appendChild(srcSel);
+
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'danger';
+      rmBtn.textContent = 'Remove';
+      rmBtn.style.fontSize = '12px';
+      rmBtn.onclick = (e) => { e.stopPropagation(); state.customNsgRules.splice(idx, 1); renderCustomNsgRules(); updateOutput(); };
+
+      grid.appendChild(protoWrap);
+      grid.appendChild(portWrap);
+      grid.appendChild(srcWrap);
+      grid.appendChild(rmBtn);
+      box.appendChild(grid);
+      list.appendChild(box);
+    });
   }
 
   /**
@@ -3270,8 +3927,12 @@ loadUiState();
    * Called at the start of {@link updateOutput} to enforce all constraints.
    */
   function sanitizeAllVms() {
-    // Global normalization pass.
+    // Global normalization pass: first sanitize each VM individually, then
+    // run the cross-VM shared disk normalization. Order matters because
+    // shared disk rules (max 2 attachments, property inheritance) depend on
+    // each VM's disks already being individually valid (correct SKUs, etc.).
     vms.forEach((vm, idx) => sanitizeVm(vm, idx));
+    normalizeSharedDisksGlobal();
   }
 
   /**
@@ -3293,9 +3954,11 @@ loadUiState();
     const hasVmNameErrors = hasAnyVmNameErrors();
     const hasNicNameErrors = hasAnyNicNameErrors();
     const hasDiskErrors = hasAnyDiskValidationErrors();
+    // Shared disk errors (e.g., >2 attachments, unsupported VM size) block ARM generation.
+    const hasSharedDiskErrors = hasAnySharedDiskValidationErrors();
     const hasAttachmentErrors = hasAnyAttachmentLimitErrors();
     const hasStorageErrors = hasAnyStorageValidationErrors();
-    const hasValidationErrors = hasVmNameErrors || hasNicNameErrors || hasDiskErrors || hasAttachmentErrors || hasStorageErrors;
+    const hasValidationErrors = hasVmNameErrors || hasNicNameErrors || hasDiskErrors || hasSharedDiskErrors || hasAttachmentErrors || hasStorageErrors;
 
     $('copyBtn').disabled = hasValidationErrors;
     $('deployPortalBtn').disabled = hasValidationErrors;
@@ -3303,6 +3966,8 @@ loadUiState();
     if (hasValidationErrors) {
       if (hasAttachmentErrors) {
         $('output').value = 'Fix VM size attachment limit errors (NIC/data disk counts) before generating the ARM template.';
+      } else if (hasSharedDiskErrors) {
+        $('output').value = 'Fix shared disk configuration errors in data disks before generating the ARM template.';
       } else if (hasStorageErrors) {
         $('output').value = 'Fix SMB/NFS share name validation errors in Extra options before generating the ARM template.';
       } else if (hasVmNameErrors && hasNicNameErrors && hasDiskErrors) {
@@ -3423,6 +4088,104 @@ loadUiState();
       showToast('Import failed', 'No "resources" array found in the JSON.');
       return;
     }
+
+    // --- Collect storage options (SMB/NFS + share names) ---
+    function parameterDefaultString(templateObj, parameterName) {
+      const params = (templateObj && templateObj.parameters) || {};
+      const p = params && params[parameterName];
+      if (!p || typeof p !== 'object') return '';
+      const dv = p.defaultValue;
+      return (typeof dv === 'string') ? dv : '';
+    }
+
+    function extractShareNameFromShareResourceName(nameExpr, templateObj) {
+      const raw = String(nameExpr || '').trim();
+      if (!raw) return '';
+
+      // First try parameter references in expression (use last one as likely share parameter).
+      const paramMatches = Array.from(raw.matchAll(/parameters\('([^']+)'\)/g));
+      if (paramMatches.length) {
+        const lastParamName = String(paramMatches[paramMatches.length - 1][1] || '');
+        const fromDefault = parameterDefaultString(templateObj, lastParamName);
+        if (fromDefault) return fromDefault;
+      }
+
+      // Fallback for literal names: "account/default/share" or "default/share".
+      const unwrapped = raw.replace(/^\[/, '').replace(/\]$/, '').replace(/'/g, '');
+      const slashParts = unwrapped.split('/').map(p => p.trim()).filter(Boolean);
+      if (slashParts.length >= 3) return slashParts[2];
+      if (slashParts.length >= 2) return slashParts[1];
+
+      return '';
+    }
+
+    const importedStorage = normalizeStorageOptions(state.storageOptions);
+    importedStorage.smbEnabled = false;
+    importedStorage.nfsEnabled = false;
+
+    resources
+      .filter(r => r.type === 'Microsoft.Storage/storageAccounts/fileServices/shares')
+      .forEach(shareRes => {
+        const props = (shareRes && shareRes.properties) || {};
+        const protocol = String(props.enabledProtocols || '').toLowerCase();
+        const shareNameRaw = extractShareNameFromShareResourceName(shareRes.name, template);
+
+        if (protocol === 'smb') {
+          importedStorage.smbEnabled = true;
+          if (shareNameRaw) importedStorage.smbShareName = normalizeShareName(shareNameRaw, 'smbshare');
+        }
+        if (protocol === 'nfs') {
+          importedStorage.nfsEnabled = true;
+          if (shareNameRaw) importedStorage.nfsShareName = normalizeShareName(shareNameRaw, 'nfsshare');
+        }
+      });
+
+    // --- Collect custom NSG rules (best-effort) ---
+    function normalizeProtocolForImport(protocol) {
+      const p = String(protocol || '').toLowerCase();
+      if (p === 'tcp') return 'Tcp';
+      if (p === 'udp') return 'Udp';
+      return '';
+    }
+
+    function normalizeSourceForImport(source) {
+      const s = String(source || '').toLowerCase();
+      if (s === 'azurecloud') return 'AzureCloud';
+      if (s === 'internet') return 'Internet';
+      return '';
+    }
+
+    function isPortOrRange(value) {
+      return /^\d+(-\d+)?$/.test(String(value || '').trim());
+    }
+
+    const importedCustomNsgRules = [];
+    const importedCustomNsgRuleKeys = new Set();
+    const nsgResources = resources.filter(r => r.type === 'Microsoft.Network/networkSecurityGroups');
+    nsgResources.forEach(nsg => {
+      const secRules = ((nsg && nsg.properties) ? nsg.properties.securityRules : null) || [];
+      secRules.forEach(sr => {
+        const props = (sr && sr.properties) || {};
+        if (String(props.direction || '').toLowerCase() !== 'inbound') return;
+        if (String(props.access || '').toLowerCase() !== 'allow') return;
+
+        const protocol = normalizeProtocolForImport(props.protocol);
+        const source = normalizeSourceForImport(props.sourceAddressPrefix);
+        const port = String(props.destinationPortRange || '').trim();
+        if (!protocol || !source || !isPortOrRange(port)) return;
+
+        // Ignore the default SSH rule generated by this tool.
+        const name = String((sr && sr.name) || '').toLowerCase();
+        const isDefaultSshRule = name === 'inbound_ssh_azurecloud'
+          || (protocol === 'Tcp' && source === 'AzureCloud' && port === '22' && Number(props.priority) === 100);
+        if (isDefaultSshRule) return;
+
+        const key = `${protocol}|${port}|${source}`;
+        if (importedCustomNsgRuleKeys.has(key)) return;
+        importedCustomNsgRuleKeys.add(key);
+        importedCustomNsgRules.push({ protocol, port, source });
+      });
+    });
 
     // --- Collect NIC resources by name for later lookup ---
     const nicResources = new Map();
@@ -3553,7 +4316,12 @@ loadUiState();
         const sku = validDiskSkus.includes(rawSku) ? rawSku : 'StandardSSD_LRS';
         return {
           sizeGB: Number(d.diskSizeGB) || LIMITS.DEFAULT_DATA_DISK_GB,
-          sku: sku
+          sku: sku,
+          // Imported disks are always non-shared. ARM templates use createOption: "Attach"
+          // with resource IDs for shared disks, which can't be reliably mapped back to the
+          // logical shared disk model during import.
+          sharedEnabled: false,
+          sharedDiskId: ''
         };
       });
 
@@ -3579,14 +4347,18 @@ loadUiState();
 
     // Replace current VMs with imported ones
     state.vms = imported;
+    state.storageOptions = importedStorage;
+    state.customNsgRules = importedCustomNsgRules;
     state.activeVmIndex = 0;
     render();
 
     // Build summary
     const parts = [`Imported ${imported.length} VM(s).`];
+    parts.push(`Storage: SMB ${importedStorage.smbEnabled ? 'on' : 'off'}, NFS ${importedStorage.nfsEnabled ? 'on' : 'off'}.`);
+    parts.push(`Imported ${importedCustomNsgRules.length} custom NSG rule(s).`);
     if (skipped.length) parts.push(`Skipped ${skipped.length}: ${skipped.join('; ')}`);
     if (vmResources.some(r => (r.properties && r.properties.osProfile && r.properties.osProfile.customData))) {
-      parts.push('Custom data was cleared (cannot reverse-decode).');
+      parts.push('Custom data was cleared during import.');
     }
     showToast('Import complete', parts.join(' '));
   }
@@ -3609,6 +4381,9 @@ loadUiState();
 
     alignVmSizeToActiveFilters(vm);
     sanitizeVm(vm, active);
+    // Shared disk normalization must run after sanitizeVm to ensure cross-VM
+    // constraints (max 2 attachments, property sync) are enforced before rendering.
+    normalizeSharedDisksGlobal();
 
     populateSizeSelect(vm);
     renderVmFormFields(vm);
@@ -3618,6 +4393,7 @@ loadUiState();
     renderDisks(vm);
     renderExtraOptionsPanel();
     renderStorageSection();
+    renderCustomNsgRules();
 
     updateOutput();
   }
@@ -3759,7 +4535,14 @@ loadUiState();
         id: uid(),
         name: String(n.name || `nic${i+1}`)
       })),
-      disks: (src.disks || []).map(d => ({ ...d }))
+      // Cloned disks are reset to non-shared. Inheriting shared disk IDs would
+      // silently create a third attachment (exceeding maxShares=2) or cause
+      // unintended cross-VM disk sharing.
+      disks: (src.disks || []).map(d => ({
+        ...d,
+        sharedEnabled: false,
+        sharedDiskId: ''
+      }))
     };
 
     vms.push(clone);
@@ -3795,7 +4578,13 @@ loadUiState();
       showToast('Data disk limit reached', `VM size '${vm.size}' supports up to ${maxDataDisksFor(vm)} data disk(s).`);
       return;
     }
-    vm.disks.push({ sizeGB: LIMITS.DEFAULT_DATA_DISK_GB, sku: defaultDiskSkuFor(vm) });
+    // New disks start as normal (non-shared). Use "Enable shared disk" to convert.
+    vm.disks.push({
+      sizeGB: LIMITS.DEFAULT_DATA_DISK_GB,
+      sku: defaultDiskSkuFor(vm),
+      sharedEnabled: false,
+      sharedDiskId: ''
+    });
     renderDisks(vm);
     updateNicDiskButtons(vm);
     updateOutput();
@@ -3836,6 +4625,9 @@ loadUiState();
   const imgs = filterImagesFor(vm);
   if (!imgs.find(i => i.key === vm.imageKey)) vm.imageKey = imgs[0] ? imgs[0].key : '';
   const changedSkus = normalizeDataDiskSkus(vm);
+  // If the new VM size doesn't support shared disks, convert all shared disks
+  // on this VM to normal (non-shared) disks. This prevents invalid ARM output.
+  const convertedSharedDisks = sharedDiskSupportedFor(vm) ? 0 : convertSharedDisksToNormalOnVm(vm);
 
   if (prevGen !== vm.gen && prevCtl !== vm.diskControllerType) {
     showToast('Adjusted VM settings', `Size changed. Gen '${prevGen}'→'${vm.gen}', Controller '${prevCtl}'→'${vm.diskControllerType}'.`);
@@ -3853,6 +4645,10 @@ loadUiState();
 
   if (changedSkus > 0) {
     showToast('Adjusted data disk SKU', `Size changed. ${changedSkus} data disk(s) were switched to supported SKU values.`);
+  }
+
+  if (convertedSharedDisks > 0) {
+    showToast('Adjusted shared disks', `Size '${vm.size}' does not support shared disks. ${convertedSharedDisks} shared disk(s) were converted to normal disks.`);
   }
 
   const nicOverflow = (vm.nics || []).length - maxNicsFor(vm);
@@ -3937,7 +4733,6 @@ loadUiState();
     saveUiState();
   };
 
-  // Close the Extra options overlay when clicking outside of both the panel and the toggle button.
   document.addEventListener('click', (e) => {
     const panel = $('extraOptionsPanel');
     const toggleBtn = $('toggleExtraOptionsBtn');
@@ -3972,6 +4767,13 @@ loadUiState();
   $('nfsShareName').oninput = (e) => {
     state.storageOptions.nfsShareName = String(e.target.value || '');
     renderStorageSection();
+    updateOutput();
+  };
+
+  $('addNsgRuleBtn').onclick = () => {
+    state.customNsgRules = state.customNsgRules || [];
+    state.customNsgRules.push({ protocol: 'Tcp', port: '', source: 'AzureCloud' });
+    renderCustomNsgRules();
     updateOutput();
   };
 
